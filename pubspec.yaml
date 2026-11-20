@@ -1,0 +1,106 @@
+name: aniways
+description: "Aniways - An anime tracking, schedule, and discovery app."
+publish_to: "none"
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.13.7
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # Icons
+  cupertino_icons: ^2.0.0
+
+  # Networking
+  dio: ^5.11.1
+  connectivity_plus: ^7.3.2
+  internet_connection_checker_plus: ^3.1.2
+
+  # State Management
+  provider: ^6.1.5+1
+
+  # navigation
+  persistent_bottom_nav_bar_v2: ^6.5.0
+
+  # caching
+  cached_network_image: ^4.0.6
+  flutter_cache_manager: ^3.4.6
+
+  # Storage
+  shared_preferences: ^2.5.6
+  flutter_secure_storage: ^11.2.0
+
+  # Logging
+  logger: ^2.8.0
+
+  # Theme (v1.9.0 is latest for Flutter SDK material; v2+ migrated to standalone material_ui)
+  dynamic_color: ^1.9.0
+
+  # Utils
+  path_provider: ^2.1.6
+  path: ^1.9.1
+  package_info_plus: ^10.2.2
+  url_launcher: ^6.3.3
+  crypto: ^3.0.6
+  flutter_markdown: ^0.7.6
+  image: ^4.13.1
+
+  # color palette from image
+  palette_generator_plus: ^1.0.0
+
+  # video
+  better_player: ^1.37.0
+  wakelock_plus: ^1.8.2
+
+  # sql
+  drift: ^2.35.4
+  drift_flutter: ^0.3.1
+  file_picker: ^13.3.3
+  share_plus: ^13.3.1
+
+  # notification
+  flutter_local_notifications: ^23.0.2
+  timezone: ^0.11.2
+
+  # background task
+  workmanager: ^0.10.10
+
+  # JavaScript Engine & Crypto for Extensions
+  flutter_js: ^0.8.7
+  encrypt: ^5.0.3
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+  flutter_launcher_icons: ^0.14.4
+  drift_dev: ^2.35.3
+  build_runner: ^2.17.1
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  linux: true
+  macos:
+    generate: true
+    image_path: "assets/logo_light.webp"
+  windows:
+    generate: true
+    image_path: "assets/logo_light.webp"
+    icon_size: 48
+  image_path: "assets/logo_light.webp"
+  adaptive_icon_background: "#ffffff"
+  adaptive_icon_foreground: "assets/logo_light.webp"
+  adaptive_icon_monochrome: "assets/logo_monochrome.webp"
+  remove_alpha_ios: true
+  background_color_ios: "#ffffff"
+  image_path_ios_dark_transparent: "assets/logo_dark.webp"
+  image_path_ios_tinted_grayscale: "assets/logo_monochrome.webp"
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/
