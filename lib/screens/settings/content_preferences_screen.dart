@@ -61,6 +61,7 @@ class _ContentPreferencesScreenState extends State<ContentPreferencesScreen> {
     return showOneUiBottomSheet<bool>(
       context: context,
       isScrollControlled: false,
+      useRootNavigator: false,
       builder: (sheetContext) {
         final theme = Theme.of(sheetContext);
         final cs = theme.colorScheme;
@@ -245,7 +246,48 @@ class _ContentPreferencesScreenState extends State<ContentPreferencesScreen> {
           ),
           const SizedBox(height: 24),
 
-          // ── 2. Information Card ─────────────────────────────────────────────
+          // ── 2. Privacy & Diagnostics ──────────────────────────────────────
+          const Padding(
+            padding: kSettingsHorizontalPadding,
+            child: SettingsSectionHeader('Diagnostics & Crash Reports'),
+          ),
+          Padding(
+            padding: kSettingsHorizontalPadding,
+            child: Column(
+              children: [
+                SettingsSwitchTile(
+                  icon: Icons.bug_report_outlined,
+                  color: cs.primary,
+                  title: 'Anonymous Crash Reporting',
+                  subtitle: _prefs.isCrashReportingEnabled
+                      ? 'Automatically send anonymized error logs to help fix bugs'
+                      : 'Disabled - no error diagnostics or crash logs are sent',
+                  value: _prefs.isCrashReportingEnabled,
+                  isFirst: true,
+                  isLast: true,
+                  onChanged: (val) async {
+                    HapticFeedback.selectionClick();
+                    await _prefs.setCrashReportingEnabled(val);
+                    setState(() {});
+                    if (mounted) {
+                      AniwaysSnackBar.info(
+                        context,
+                        message: val
+                            ? 'Anonymous crash reporting enabled'
+                            : 'Crash reporting disabled',
+                        icon: val
+                            ? Icons.check_circle_outline_rounded
+                            : Icons.cancel_outlined,
+                      );
+                    }
+                  },
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 24),
+
+          // ── 3. Information Card ─────────────────────────────────────────────
           Padding(
             padding: kSettingsHorizontalPadding,
             child: Container(

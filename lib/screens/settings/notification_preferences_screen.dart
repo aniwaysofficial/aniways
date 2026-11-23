@@ -32,8 +32,6 @@ class _NotificationPreferencesScreenState
   final SubscriptionRepository _subRepo = SubscriptionRepository.instance;
   bool _systemPermissionGranted = true;
   bool _isBatteryUnrestricted = false;
-  Timer? _countdownTimer;
-  int _remainingTestSeconds = 0;
 
   @override
   void initState() {
@@ -45,7 +43,6 @@ class _NotificationPreferencesScreenState
 
   @override
   void dispose() {
-    _countdownTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -157,384 +154,24 @@ class _NotificationPreferencesScreenState
     }
   }
 
-  Future<void> _scheduleTestNotification(Duration delay) async {
-    final granted = await NotificationService.instance.requestPermission();
-    _systemPermissionGranted = granted;
-    if (!granted) {
-      if (mounted) {
-        AniwaysSnackBar.error(
-          context,
-          message: 'Notifications are disabled in system settings',
-          actionLabel: 'Settings',
-          onAction: () => NotificationService.instance.openSettings(),
-        );
+  static String formatAiringSchedule(DateTime airingAt) {
+    final now = DateTime.now();
+    final diff = airingAt.difference(now);
+    if (diff.isNegative) {
+      final bufferTime = airingAt.add(const Duration(minutes: 40));
+      if (now.isBefore(bufferTime)) {
+        final rem = bufferTime.difference(now).inMinutes;
+        return 'Aired · In provider buffer ($rem min left)';
       }
-      return;
+      return 'Aired · Ready for stream check';
     }
-
-    final subs = await _subRepo.getActiveSubscriptions();
-    final String animeTitle = subs.isNotEmpty
-        ? subs.first.animeTitle
-        : 'Frieren: Beyond Journey\'s End';
-    final int animeId = subs.isNotEmpty ? subs.first.animeId : 154587;
-    final int epNum = subs.isNotEmpty ? subs.first.nextEpisodeNumber : 29;
-    final String coverUrl = subs.isNotEmpty && subs.first.coverUrl != null
-        ? subs.first.coverUrl!
-        : 'https://s4.anilist.co/file/anilistcdn/media/anime/cover/large/bx154587-qQTzQnEJJ3oB.jpg';
-
-    await BackgroundNotificationWorker.scheduleTestNotification(
-      delay: delay,
-      animeTitle: animeTitle,
-      animeId: animeId,
-      episodeNumber: epNum,
-      coverUrl: coverUrl,
-    );
-
-    _countdownTimer?.cancel();
-    _remainingTestSeconds = delay.inSeconds;
-    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (!mounted) {
-        timer.cancel();
-        return;
-      }
-      setState(() {
-        _remainingTestSeconds--;
-        if (_remainingTestSeconds <= 0) {
-          timer.cancel();
-        }
-      });
-    });
-
-    setState(() {});
-
-    if (mounted) {
-      AniwaysSnackBar.success(
-        context,
-        message:
-            'Alert scheduled in ${delay.inSeconds}s! Close or swipe Aniways away now to test.',
-        icon: Icons.timer_outlined,
-      );
+    if (diff.inDays > 0) {
+      return 'Airs in ${diff.inDays}d ${diff.inHours % 24}h';
     }
-  }
-
-  Future<void> _cancelTestTimer() async {
-    _countdownTimer?.cancel();
-    _remainingTestSeconds = 0;
-    await BackgroundNotificationWorker.cancelTestNotification();
-    setState(() {});
-    if (mounted) {
-      AniwaysSnackBar.info(
-        context,
-        message: 'Cancelled scheduled test alert',
-        icon: Icons.cancel_outlined,
-      );
+    if (diff.inHours > 0) {
+      return 'Airs in ${diff.inHours}h ${diff.inMinutes % 60}m';
     }
-  }
-
-  // ignore: unused_element
-  void _showTestNotificationSheet() {
-    HapticFeedback.lightImpact();
-
-    if (_remainingTestSeconds > 0) {
-      showOneUiBottomSheet<void>(
-        context: context,
-        isScrollControlled: false,
-        builder: (ctx) {
-          final cs = Theme.of(ctx).colorScheme;
-          return SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Center(child: OneUiDragHandle()),
-                  const SizedBox(height: 12),
-                  Text(
-                    'Active Test Timer',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w700,
-                      color: cs.onSurface,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    'Background notification will trigger in $_remainingTestSeconds seconds via WorkManager.',
-                    style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant),
-                  ),
-                  const SizedBox(height: 20),
-                  SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton.icon(
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: cs.error,
-                        side: BorderSide(
-                          color: cs.error.withValues(alpha: 0.5),
-                        ),
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                      ),
-                      onPressed: () {
-                        Navigator.of(ctx).pop();
-                        _cancelTestTimer();
-                      },
-                      icon: const Icon(Icons.cancel_outlined, size: 20),
-                      label: const Text(
-                        'Cancel Scheduled Test',
-                        style: TextStyle(fontWeight: FontWeight.w700),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                ],
-              ),
-            ),
-          );
-        },
-      );
-      return;
-    }
-
-    showOneUiBottomSheet<void>(
-      context: context,
-      isScrollControlled: false,
-      builder: (ctx) {
-        final cs = Theme.of(ctx).colorScheme;
-        double customSeconds = 45;
-
-        return StatefulBuilder(
-          builder: (sheetContext, setSheetState) {
-            return SafeArea(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 20,
-                  vertical: 14,
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Center(child: OneUiDragHandle()),
-                    const SizedBox(height: 12),
-                    Text(
-                      'Test Notification',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w700,
-                        color: cs.onSurface,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Verify alert layout or test background delivery when Aniways is closed.',
-                      style: TextStyle(
-                        fontSize: 12.5,
-                        color: cs.onSurfaceVariant,
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    _buildTimerOptionTile(
-                      ctx,
-                      icon: Icons.flash_on_rounded,
-                      title: 'Send Immediately',
-                      subtitle: 'Fires sample alert now in foreground',
-                      onTap: () {
-                        Navigator.of(ctx).pop();
-                        _sendTestNotification();
-                      },
-                    ),
-                    const SizedBox(height: 6),
-                    _buildTimerOptionTile(
-                      ctx,
-                      icon: Icons.timer_outlined,
-                      title: 'In 15 seconds',
-                      subtitle: 'Quick test: lock screen or swipe app away',
-                      onTap: () {
-                        Navigator.of(ctx).pop();
-                        _scheduleTestNotification(const Duration(seconds: 15));
-                      },
-                    ),
-                    const SizedBox(height: 6),
-                    _buildTimerOptionTile(
-                      ctx,
-                      icon: Icons.schedule_rounded,
-                      title: 'In 30 seconds (Recommended)',
-                      subtitle: 'Plenty of time to swipe Aniways from Recents',
-                      onTap: () {
-                        Navigator.of(ctx).pop();
-                        _scheduleTestNotification(const Duration(seconds: 30));
-                      },
-                    ),
-                    const SizedBox(height: 6),
-                    _buildTimerOptionTile(
-                      ctx,
-                      icon: Icons.hourglass_bottom_rounded,
-                      title: 'In 1 minute',
-                      subtitle: 'Standard background worker test',
-                      onTap: () {
-                        Navigator.of(ctx).pop();
-                        _scheduleTestNotification(const Duration(minutes: 1));
-                      },
-                    ),
-                    const SizedBox(height: 16),
-                    Container(
-                      padding: const EdgeInsets.all(14),
-                      decoration: BoxDecoration(
-                        color: cs.surfaceContainerHighest.withValues(
-                          alpha: 0.4,
-                        ),
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(
-                          color: cs.outlineVariant.withValues(alpha: 0.3),
-                        ),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text(
-                                'Custom Timer',
-                                style: TextStyle(
-                                  fontSize: 13.5,
-                                  fontWeight: FontWeight.w700,
-                                  color: cs.onSurface,
-                                ),
-                              ),
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 10,
-                                  vertical: 3.5,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: cs.primaryContainer,
-                                  borderRadius: BorderRadius.circular(10),
-                                ),
-                                child: Text(
-                                  customSeconds >= 60
-                                      ? '${(customSeconds / 60).toStringAsFixed(1)} min'
-                                      : '${customSeconds.round()} sec',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w800,
-                                    color: cs.onPrimaryContainer,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                          Slider(
-                            value: customSeconds,
-                            min: 10,
-                            max: 300,
-                            divisions: 29,
-                            onChanged: (val) {
-                              setSheetState(() => customSeconds = val);
-                            },
-                          ),
-                          SizedBox(
-                            width: double.infinity,
-                            child: FilledButton.tonal(
-                              style: FilledButton.styleFrom(
-                                padding: const EdgeInsets.symmetric(
-                                  vertical: 12,
-                                ),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                              ),
-                              onPressed: () {
-                                Navigator.of(ctx).pop();
-                                _scheduleTestNotification(
-                                  Duration(seconds: customSeconds.round()),
-                                );
-                              },
-                              child: Text(
-                                'Schedule in ${customSeconds.round()}s',
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                  ],
-                ),
-              ),
-            );
-          },
-        );
-      },
-    );
-  }
-
-  Widget _buildTimerOptionTile(
-    BuildContext context, {
-    required IconData icon,
-    required String title,
-    required String subtitle,
-    required VoidCallback onTap,
-  }) {
-    final cs = Theme.of(context).colorScheme;
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(14),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-          child: Row(
-            children: [
-              Container(
-                width: 38,
-                height: 38,
-                decoration: BoxDecoration(
-                  color: cs.primary.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Icon(icon, size: 20, color: cs.primary),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
-                        color: cs.onSurface,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      subtitle,
-                      style: TextStyle(
-                        fontSize: 11.5,
-                        color: cs.onSurfaceVariant,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Icon(
-                Icons.chevron_right_rounded,
-                size: 18,
-                color: cs.onSurfaceVariant,
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
+    return 'Airs in ${diff.inMinutes}m';
   }
 
   @override
@@ -669,26 +306,33 @@ class _NotificationPreferencesScreenState
                           .openBatteryOptimizationSettings();
                     },
                   ),
-                  // const SizedBox(height: 2),
-                  // SettingsActionTile(
-                  //   icon: _remainingTestSeconds > 0
-                  //       ? Icons.timer_rounded
-                  //       : Icons.notifications_active_outlined,
-                  //   color: _remainingTestSeconds > 0 ? cs.error : cat.accounts,
-                  //   title: 'Test Notification',
-                  //   subtitle: _remainingTestSeconds > 0
-                  //       ? 'Alert firing in ${_remainingTestSeconds}s · Tap to cancel'
-                  //       : 'Send sample alert now or schedule a background delivery timer',
-                  //   isFirst: false,
-                  //   isLast: true,
-                  //   onTap: _showTestNotificationSheet,
-                  // ),
                 ],
               ],
             ),
           ),
 
-          // ── 2. Episode Alerts ────────────────────────────────────────────────
+          // ── 2. Test Notification ─────────────────────────────────────────────
+          // if (enabled) ...[
+          //   const SizedBox(height: 24),
+          //   const Padding(
+          //     padding: kSettingsHorizontalPadding,
+          //     child: SettingsSectionHeader('Test Notification'),
+          //   ),
+          //   Padding(
+          //     padding: kSettingsHorizontalPadding,
+          //     child: SettingsActionTile(
+          //       icon: Icons.notifications_active_rounded,
+          //       color: cat.playback,
+          //       title: 'Send Test Notification',
+          //       subtitle: 'Verify notification delivery, sound, and appearance',
+          //       isFirst: true,
+          //       isLast: true,
+          //       onTap: _sendTestNotification,
+          //     ),
+          //   ),
+          // ],
+
+          // ── 3. Episode Alerts ────────────────────────────────────────────────
           if (enabled) ...[
             const SizedBox(height: 24),
             const Padding(
@@ -779,7 +423,7 @@ class _NotificationPreferencesScreenState
             ),
             const SizedBox(height: 24),
 
-            // ── 3. Active Subscriptions ─────────────────────────────────────────
+            // ── 4. Active Subscriptions ─────────────────────────────────────────
             Padding(
               padding: kSettingsHorizontalPadding,
               child: SettingsSectionHeader(
@@ -787,7 +431,7 @@ class _NotificationPreferencesScreenState
                 trailing: TextButton.icon(
                   onPressed: () async {
                     HapticFeedback.lightImpact();
-                    await checkAndNotifyEpisodes();
+                    await checkAndNotifyEpisodes(forceCheck: true);
                     await BackgroundNotificationWorker.rescheduleAllSubscriptions();
                     if (context.mounted) {
                       AniwaysSnackBar.success(
@@ -928,13 +572,25 @@ class _SubscriptionTile extends StatelessWidget {
           overflow: TextOverflow.ellipsis,
           style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
         ),
-        subtitle: Text(
-          'Next: Ep ${sub.nextEpisodeNumber}',
-          style: TextStyle(
-            color: cs.primary,
-            fontSize: 12.5,
-            fontWeight: FontWeight.w500,
-          ),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Next: Ep ${sub.nextEpisodeNumber}',
+              style: TextStyle(
+                color: cs.primary,
+                fontSize: 12.5,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              _NotificationPreferencesScreenState.formatAiringSchedule(
+                sub.nextAiringAt,
+              ),
+              style: TextStyle(color: cs.onSurfaceVariant, fontSize: 11),
+            ),
+          ],
         ),
         trailing: IconButton(
           icon: Icon(

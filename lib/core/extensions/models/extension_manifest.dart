@@ -20,6 +20,7 @@ class ExtensionManifest {
     this.repoUrl,
     this.installedAt,
     this.updatedAt,
+    this.isAdult = false,
   });
 
   final String id;
@@ -38,6 +39,7 @@ class ExtensionManifest {
   final String? repoUrl;
   final DateTime? installedAt;
   final DateTime? updatedAt;
+  final bool isAdult;
 
   bool get hasSub => audio.contains(StreamAudio.sub);
   bool get hasDub => audio.contains(StreamAudio.dub);
@@ -50,6 +52,7 @@ class ExtensionManifest {
       audio: audio,
       status: isEnabled ? 'online' : 'offline',
       iconUrl: iconUrl,
+      isAdult: isAdult,
     );
   }
 
@@ -70,6 +73,7 @@ class ExtensionManifest {
     String? repoUrl,
     DateTime? installedAt,
     DateTime? updatedAt,
+    bool? isAdult,
   }) {
     return ExtensionManifest(
       id: id ?? this.id,
@@ -88,6 +92,7 @@ class ExtensionManifest {
       repoUrl: repoUrl ?? this.repoUrl,
       installedAt: installedAt ?? this.installedAt,
       updatedAt: updatedAt ?? this.updatedAt,
+      isAdult: isAdult ?? this.isAdult,
     );
   }
 
@@ -145,6 +150,7 @@ class ExtensionManifest {
       updatedAt: json['updatedAt'] != null
           ? DateTime.tryParse(json['updatedAt'].toString())
           : null,
+      isAdult: (json['isAdult'] as bool?) ?? false,
     );
   }
 
@@ -165,6 +171,7 @@ class ExtensionManifest {
         'repoUrl': repoUrl,
         'installedAt': installedAt?.toIso8601String(),
         'updatedAt': updatedAt?.toIso8601String(),
+        'isAdult': isAdult,
       };
 }
 

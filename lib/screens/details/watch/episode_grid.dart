@@ -2,6 +2,8 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'package:aniways/core/database/repositories/watch_repository.dart'
+    show EpisodeProgressInfo;
 import 'package:aniways/core/helpers.dart';
 import 'package:aniways/core/network/extractor_service.dart';
 import 'package:aniways/core/services/image_cache_service.dart';
@@ -160,6 +162,7 @@ class EpisodeViewSection extends StatelessWidget {
               anime: anime,
               isSelected: wp.currentEpisode?.number == ep.number,
               watchedPercent: wp.watchedPercentages[ep.number],
+              progress: wp.episodeProgressMap[ep.number],
               accent: accent,
               onTap: () => _playEpisode(context, ep),
               onOptions: () => _showOptions(context, ep),
@@ -191,6 +194,7 @@ class EpisodeViewSection extends StatelessWidget {
             anime: anime,
             isSelected: isSelected,
             watchedPercent: percent,
+            progress: wp.episodeProgressMap[ep.number],
             accent: accent,
             onTap: () => _playEpisode(context, ep),
             onOptions: () => _showOptions(context, ep),
@@ -336,6 +340,7 @@ class _EpisodeTile extends StatelessWidget {
     required this.anime,
     required this.isSelected,
     required this.watchedPercent,
+    this.progress,
     required this.accent,
     required this.onTap,
     this.onOptions,
@@ -345,6 +350,7 @@ class _EpisodeTile extends StatelessWidget {
   final AnimeMedia anime;
   final bool isSelected;
   final double? watchedPercent;
+  final EpisodeProgressInfo? progress;
   final Color accent;
   final VoidCallback onTap;
   final VoidCallback? onOptions;
@@ -381,6 +387,15 @@ class _EpisodeTile extends StatelessWidget {
     final durationLabel = _formatDuration(ep.duration);
     final formattedAirDate = _formatAirDate(ep.airDate);
     final isCompleted = watchedPercent != null && watchedPercent! >= 0.90;
+    final hasWatchProgress = progress != null &&
+        progress!.position > Duration.zero &&
+        progress!.duration > Duration.zero &&
+        !isCompleted;
+    final watchProgressLabel = hasWatchProgress
+        ? '${formatDuration(progress!.position)} / ${formatDuration(progress!.duration)}'
+        : '';
+    final timeLabel =
+        watchProgressLabel.isNotEmpty ? watchProgressLabel : durationLabel;
 
     return RepaintBoundary(
       child: Material(
@@ -673,9 +688,9 @@ class _EpisodeTile extends StatelessWidget {
                                 ),
                               ],
 
-                              // Bottom row: air date • duration (only if metadata exists)
+                              // Bottom row: air date • duration / progress (only if metadata exists)
                               if (formattedAirDate != null ||
-                                  durationLabel.isNotEmpty) ...[
+                                  timeLabel.isNotEmpty) ...[
                                 const Spacer(),
                                 const SizedBox(height: 4),
                                 Row(
@@ -690,7 +705,7 @@ class _EpisodeTile extends StatelessWidget {
                                                   .withValues(alpha: 0.75),
                                             ),
                                       ),
-                                      if (durationLabel.isNotEmpty) ...[
+                                      if (timeLabel.isNotEmpty) ...[
                                         Padding(
                                           padding: const EdgeInsets.symmetric(
                                             horizontal: 5,
@@ -705,25 +720,33 @@ class _EpisodeTile extends StatelessWidget {
                                           ),
                                         ),
                                         Text(
-                                          durationLabel,
+                                          timeLabel,
                                           style: theme.textTheme.bodySmall
                                               ?.copyWith(
                                                 fontSize: 11,
                                                 fontWeight: FontWeight.w600,
-                                                color: cs.onSurfaceVariant
-                                                    .withValues(alpha: 0.75),
+                                                color: hasWatchProgress
+                                                    ? (isSelected
+                                                        ? accent
+                                                        : cs.primary)
+                                                    : cs.onSurfaceVariant
+                                                        .withValues(alpha: 0.75),
                                               ),
                                         ),
                                       ],
-                                    ] else if (durationLabel.isNotEmpty) ...[
+                                    ] else if (timeLabel.isNotEmpty) ...[
                                       Text(
-                                        durationLabel,
+                                        timeLabel,
                                         style: theme.textTheme.bodySmall
                                             ?.copyWith(
                                               fontSize: 11,
                                               fontWeight: FontWeight.w600,
-                                              color: cs.onSurfaceVariant
-                                                  .withValues(alpha: 0.75),
+                                              color: hasWatchProgress
+                                                  ? (isSelected
+                                                      ? accent
+                                                      : cs.primary)
+                                                  : cs.onSurfaceVariant
+                                                      .withValues(alpha: 0.75),
                                             ),
                                       ),
                                     ],
@@ -757,6 +780,7 @@ class _EpisodeCardTile extends StatelessWidget {
     required this.anime,
     required this.isSelected,
     required this.watchedPercent,
+    this.progress,
     required this.accent,
     required this.onTap,
     this.onOptions,
@@ -766,6 +790,7 @@ class _EpisodeCardTile extends StatelessWidget {
   final AnimeMedia anime;
   final bool isSelected;
   final double? watchedPercent;
+  final EpisodeProgressInfo? progress;
   final Color accent;
   final VoidCallback onTap;
   final VoidCallback? onOptions;
@@ -792,6 +817,15 @@ class _EpisodeCardTile extends StatelessWidget {
     final imageUrl = ep.image ?? anime.bannerUrl ?? anime.coverUrl;
     final durationLabel = _formatDuration(ep.duration);
     final isCompleted = watchedPercent != null && watchedPercent! >= 0.90;
+    final hasWatchProgress = progress != null &&
+        progress!.position > Duration.zero &&
+        progress!.duration > Duration.zero &&
+        !isCompleted;
+    final watchProgressLabel = hasWatchProgress
+        ? '${formatDuration(progress!.position)} / ${formatDuration(progress!.duration)}'
+        : '';
+    final timeBadgeLabel =
+        watchProgressLabel.isNotEmpty ? watchProgressLabel : durationLabel;
 
     return RepaintBoundary(
       child: Material(
@@ -902,8 +936,8 @@ class _EpisodeCardTile extends StatelessWidget {
                         ),
                       ),
 
-                      // Bottom-Right Duration Badge
-                      if (durationLabel.isNotEmpty)
+                      // Bottom-Right Duration / Progress Badge
+                      if (timeBadgeLabel.isNotEmpty)
                         Positioned(
                           bottom: 6,
                           right: 6,
@@ -913,11 +947,11 @@ class _EpisodeCardTile extends StatelessWidget {
                               vertical: 1.5,
                             ),
                             decoration: BoxDecoration(
-                              color: Colors.black.withValues(alpha: 0.75),
+                              color: Colors.black.withValues(alpha: 0.50),
                               borderRadius: BorderRadius.circular(4),
                             ),
                             child: Text(
-                              durationLabel,
+                              timeBadgeLabel,
                               style: const TextStyle(
                                 color: Colors.white,
                                 fontSize: 9.5,

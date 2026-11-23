@@ -21,6 +21,7 @@ class ProviderInfo {
     this.latencyMs,
     this.name,
     this.iconUrl,
+    this.isAdult = false,
   });
 
   final String id;
@@ -29,6 +30,7 @@ class ProviderInfo {
   final int? latencyMs;
   final String? name;
   final String? iconUrl;
+  final bool isAdult;
 
   bool get isOnline => status == 'online';
   bool supports(StreamAudio a) => audio.contains(a);
@@ -60,6 +62,7 @@ class ProviderInfo {
         .toList(),
     status: (json['status'] as String?) ?? 'online',
     latencyMs: (json['latencyMs'] as num?)?.toInt(),
+    isAdult: (json['isAdult'] as bool?) ?? false,
   );
 }
 

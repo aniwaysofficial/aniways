@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'package:aniways/navigation/main_navigation.dart'
-    show MainNavigation, kNavBarBottomMargin, kNavBarHeight;
+    show MainNavigation, NavBarScope, kNavBarBottomMargin, kNavBarHeight;
 
 /// Visual variant for [AniwaysSnackBar].
 enum AniwaysSnackBarVariant {
@@ -34,7 +34,9 @@ class AniwaysSnackBar {
     bool? hasBottomNavBar,
     double extraBottomMargin = 0.0,
   }) {
-    if (hasBottomNavBar == true) {
+    final effectiveHasNavBar =
+        hasBottomNavBar ?? NavBarScope.hasNavBar(context);
+    if (effectiveHasNavBar) {
       return kNavBarHeight + kNavBarBottomMargin + 12.0 + extraBottomMargin;
     }
     return 12.0 + extraBottomMargin;
@@ -73,16 +75,18 @@ class AniwaysSnackBar {
     Duration? duration,
     bool? hasBottomNavBar,
     double extraBottomMargin = 0.0,
+    Color? customAccent,
   }) {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
     final isDark = theme.brightness == Brightness.dark;
 
-    final Color accentColor = switch (variant) {
-      AniwaysSnackBarVariant.error => cs.error,
-      AniwaysSnackBarVariant.success => cs.primary,
-      AniwaysSnackBarVariant.info => cs.primary,
-    };
+    final Color accentColor = customAccent ??
+        switch (variant) {
+          AniwaysSnackBarVariant.error => cs.error,
+          AniwaysSnackBarVariant.success => cs.primary,
+          AniwaysSnackBarVariant.info => cs.primary,
+        };
 
     final isPureBlack = isDark &&
         (cs.surface == const Color(0xFF000000) ||
@@ -130,6 +134,8 @@ class AniwaysSnackBar {
             ? const Duration(seconds: 4)
             : const Duration(milliseconds: 2600));
 
+    final inheritedHasNavBar = NavBarScope.hasNavBar(context);
+
     return SnackBar(
       behavior: SnackBarBehavior.floating,
       dismissDirection: DismissDirection.none,
@@ -148,10 +154,11 @@ class AniwaysSnackBar {
       duration: effectiveDuration,
       content: ValueListenableBuilder<bool>(
         valueListenable: MainNavigation.navPillVisible,
-        builder: (context, pillVisible, child) {
-          final isKeyboardOpen = MediaQuery.viewInsetsOf(context).bottom > 0;
+        builder: (ctx, pillVisible, child) {
+          final isKeyboardOpen = MediaQuery.viewInsetsOf(ctx).bottom > 0;
           final effectivePillVisible =
-              (hasBottomNavBar ?? pillVisible) && !isKeyboardOpen;
+              (hasBottomNavBar ?? (inheritedHasNavBar || pillVisible)) &&
+                  !isKeyboardOpen;
 
           return AnimatedPadding(
             duration: const Duration(milliseconds: 240),
@@ -250,6 +257,7 @@ class AniwaysSnackBar {
     Duration? duration,
     bool? hasBottomNavBar,
     double extraBottomMargin = 0.0,
+    Color? customAccent,
   }) {
     HapticFeedback.lightImpact();
     final snackBar = create(
@@ -262,6 +270,7 @@ class AniwaysSnackBar {
       duration: duration,
       hasBottomNavBar: hasBottomNavBar,
       extraBottomMargin: extraBottomMargin,
+      customAccent: customAccent,
     );
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
@@ -278,6 +287,7 @@ class AniwaysSnackBar {
     Duration? duration,
     bool? hasBottomNavBar,
     double extraBottomMargin = 0.0,
+    Color? customAccent,
   }) {
     HapticFeedback.lightImpact();
     final snackBar = create(
@@ -290,6 +300,7 @@ class AniwaysSnackBar {
       duration: duration,
       hasBottomNavBar: hasBottomNavBar,
       extraBottomMargin: extraBottomMargin,
+      customAccent: customAccent,
     );
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
@@ -306,6 +317,7 @@ class AniwaysSnackBar {
     Duration? duration,
     bool? hasBottomNavBar,
     double extraBottomMargin = 0.0,
+    Color? customAccent,
   }) {
     HapticFeedback.mediumImpact();
     final snackBar = create(
@@ -318,6 +330,7 @@ class AniwaysSnackBar {
       duration: duration,
       hasBottomNavBar: hasBottomNavBar,
       extraBottomMargin: extraBottomMargin,
+      customAccent: customAccent,
     );
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
@@ -334,6 +347,7 @@ class AniwaysSnackBar {
     Duration? duration,
     bool? hasBottomNavBar,
     double extraBottomMargin = 0.0,
+    Color? customAccent,
   }) {
     HapticFeedback.lightImpact();
     final snackBar = create(
@@ -346,6 +360,7 @@ class AniwaysSnackBar {
       duration: duration,
       hasBottomNavBar: hasBottomNavBar,
       extraBottomMargin: extraBottomMargin,
+      customAccent: customAccent,
     );
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
@@ -364,6 +379,7 @@ void showAniwaysSnackBar(
   Duration? duration,
   bool? hasBottomNavBar,
   double extraBottomMargin = 0.0,
+  Color? customAccent,
 }) {
   switch (variant) {
     case AniwaysSnackBarVariant.success:
@@ -376,6 +392,7 @@ void showAniwaysSnackBar(
         duration: duration,
         hasBottomNavBar: hasBottomNavBar,
         extraBottomMargin: extraBottomMargin,
+        customAccent: customAccent,
       );
     case AniwaysSnackBarVariant.error:
       AniwaysSnackBar.error(
@@ -387,6 +404,7 @@ void showAniwaysSnackBar(
         duration: duration,
         hasBottomNavBar: hasBottomNavBar,
         extraBottomMargin: extraBottomMargin,
+        customAccent: customAccent,
       );
     case AniwaysSnackBarVariant.info:
       AniwaysSnackBar.show(
@@ -398,6 +416,7 @@ void showAniwaysSnackBar(
         duration: duration,
         hasBottomNavBar: hasBottomNavBar,
         extraBottomMargin: extraBottomMargin,
+        customAccent: customAccent,
       );
   }
 }

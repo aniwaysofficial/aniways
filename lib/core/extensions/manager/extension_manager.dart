@@ -160,6 +160,8 @@ class ExtensionManager {
       final media = await _aniListService.details(anilistId);
       final titlesMap = (media['title'] as Map?)?.cast<String, dynamic>() ?? {};
       final startDate = (media['startDate'] as Map?)?.cast<String, dynamic>() ?? {};
+      final genres = (media['genres'] as List?) ?? const [];
+      final isAdult = (media['isAdult'] as bool?) ?? false;
 
       final animeMeta = {
         'anilistId': anilistId,
@@ -173,6 +175,8 @@ class ExtensionManager {
         'year': (startDate['year'] as num?)?.toInt() ?? (media['seasonYear'] as num?)?.toInt(),
         'format': media['format'] as String?,
         'episodesCount': (media['episodes'] as num?)?.toInt(),
+        'isAdult': isAdult,
+        'genres': genres,
       };
 
       // 2. Call extension getEpisodes
@@ -187,17 +191,32 @@ class ExtensionManager {
       final dubList = <EpisodeItem>[];
 
       for (final raw in rawEpisodes) {
-        final epNum = (raw['number'] as num?)?.toInt() ?? 0;
+        final rawNum = raw['number'];
+        final int epNum = rawNum is int
+            ? rawNum
+            : rawNum is num
+                ? rawNum.toInt()
+                : (int.tryParse(rawNum?.toString() ?? '') ??
+                    double.tryParse(rawNum?.toString() ?? '')?.toInt() ??
+                    0);
         final epTitle = (raw['title'] as String?) ?? 'Episode $epNum';
         final epRef = (raw['ref'] as String?) ?? epNum.toString();
-        final isFiller = (raw['filler'] as bool?) ?? false;
-        final isRecap = (raw['recap'] as bool?) ?? false;
+        final isFiller = raw['filler'] == true ||
+            raw['filler'] == 1 ||
+            raw['filler'] == 'true';
+        final isRecap = raw['recap'] == true ||
+            raw['recap'] == 1 ||
+            raw['recap'] == 'true';
         final duration = (raw['duration'] as num?)?.toInt();
-        final airDate = raw['airDate'] as String?;
-        final image = raw['image'] as String?;
-        final description = raw['description'] as String?;
-        final bool hasSub = (raw['sub'] as bool?) ?? true;
-        final bool hasDub = (raw['dub'] as bool?) ?? false;
+        final airDate = raw['airDate']?.toString();
+        final image = raw['image']?.toString();
+        final description = raw['description']?.toString();
+        final bool hasSub = raw['sub'] == null
+            ? true
+            : (raw['sub'] == true || raw['sub'] == 1 || raw['sub'] == 'true');
+        final bool hasDub = raw['dub'] == true ||
+            raw['dub'] == 1 ||
+            raw['dub'] == 'true';
 
         // Encode provider, anilistId, audio, and ref into EpisodeItem.id
         if (hasSub) {

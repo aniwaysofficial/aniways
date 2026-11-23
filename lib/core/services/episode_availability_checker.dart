@@ -59,33 +59,40 @@ class EpisodeAvailabilityChecker {
         .toList();
     final providersToCheck = active.isNotEmpty ? active : primaryProviders;
 
-    final results = await Future.wait(
-      providersToCheck.map((providerId) async {
-        try {
-          return await extractorService.episodes(anilistId, providerId);
-        } catch (e) {
-          log.w('Provider check error [$providerId] for anime $anilistId: $e');
-          return null;
+    // Check providers sequentially to prevent QuickJS bridge re-entrancy collisions
+    for (final providerId in providersToCheck) {
+      try {
+        final data = await extractorService
+            .episodes(anilistId, providerId)
+            .timeout(const Duration(seconds: 25));
+        if (data == null) continue;
+
+        final hasSub = data.sub.any((ep) => ep.number == episodeNumber);
+        final hasDub = data.dub.any((ep) => ep.number == episodeNumber);
+
+        final matchesAudio = switch (prefAudio) {
+          'dub' => hasDub,
+          'sub' => hasSub,
+          _ => hasSub || hasDub,
+        };
+
+        if (matchesAudio) {
+          if (hasSub) subFound = true;
+          if (hasDub) dubFound = true;
+          final title = data.providerTitle.isNotEmpty
+              ? data.providerTitle
+              : providerId;
+          if (!availableProviders.contains(title)) {
+            availableProviders.add(title);
+          }
+
+          // When "Fastest" is chosen (minRequired == 1), alert immediately on first match
+          if (availableProviders.length >= minRequired) {
+            break;
+          }
         }
-      }),
-    );
-
-    for (final data in results) {
-      if (data == null) continue;
-
-      final hasSub = data.sub.any((ep) => ep.number == episodeNumber);
-      final hasDub = data.dub.any((ep) => ep.number == episodeNumber);
-
-      final matchesAudio = switch (prefAudio) {
-        'dub' => hasDub,
-        'sub' => hasSub,
-        _ => hasSub || hasDub,
-      };
-
-      if (matchesAudio) {
-        if (hasSub) subFound = true;
-        if (hasDub) dubFound = true;
-        availableProviders.add(data.providerTitle);
+      } catch (e) {
+        log.w('Provider check error [$providerId] for anime $anilistId: $e');
       }
     }
 

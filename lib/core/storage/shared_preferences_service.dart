@@ -584,6 +584,19 @@ class SharedPreferencesService {
   }
 
   // ════════════════════════════════════════════════════════════════════
+  // PRIVACY & DIAGNOSTICS
+  // ════════════════════════════════════════════════════════════════════
+
+  static const String _keyCrashReportingEnabled = 'crash_reporting_enabled';
+
+  bool get isCrashReportingEnabled =>
+      _prefs?.getBool(_keyCrashReportingEnabled) ?? true;
+
+  Future<void> setCrashReportingEnabled(bool value) async {
+    await _prefs?.setBool(_keyCrashReportingEnabled, value);
+  }
+
+  // ════════════════════════════════════════════════════════════════════
   // BACKUP & RESTORE SERIALIZATION
   // ════════════════════════════════════════════════════════════════════
 
@@ -624,6 +637,7 @@ class SharedPreferencesService {
       'notification_min_providers': notificationMinimumProviders,
       'notification_preferred_audio': notificationPreferredAudio,
       'notification_auto_subscribe_watching': notificationAutoSubscribeWatching,
+      'crash_reporting_enabled': isCrashReportingEnabled,
     };
   }
 
@@ -776,6 +790,13 @@ class SharedPreferencesService {
     if (data.containsKey('notification_auto_subscribe_watching')) {
       await setNotificationAutoSubscribeWatching(
         data['notification_auto_subscribe_watching'] != false,
+      );
+    }
+
+    // ── Privacy & Diagnostics ──
+    if (data.containsKey('crash_reporting_enabled')) {
+      await setCrashReportingEnabled(
+        data['crash_reporting_enabled'] != false,
       );
     }
   }

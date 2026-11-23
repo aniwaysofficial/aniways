@@ -81,10 +81,7 @@ class SettingsSectionHeader extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(16, 0, 0, 4),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            headerText,
-            trailing!,
-          ],
+          children: [headerText, trailing!],
         ),
       );
     }
@@ -207,16 +204,11 @@ class SettingsActionTile extends StatelessWidget {
         ),
         subtitle: Text(
           subtitle,
-          style: TextStyle(
-            color: cs.onSurfaceVariant,
-            fontSize: 12.5,
-          ),
+          style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12.5),
         ),
-        trailing: trailing ??
-            Icon(
-              Icons.chevron_right_rounded,
-              color: cs.onSurfaceVariant,
-            ),
+        trailing:
+            trailing ??
+            Icon(Icons.chevron_right_rounded, color: cs.onSurfaceVariant),
         onTap: onTap,
       ),
     );
@@ -266,6 +258,7 @@ class SettingsSelectorTile<T> extends StatelessWidget {
     showOneUiBottomSheet<void>(
       context: context,
       isScrollControlled: false,
+      useRootNavigator: false,
       builder: (sheetContext) {
         final cs = Theme.of(sheetContext).colorScheme;
 
@@ -356,11 +349,7 @@ class SettingsSelectorTile<T> extends StatelessWidget {
       child: ListTile(
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
         enabled: isEnabled,
-        leading: SettingsTileIcon(
-          icon: icon,
-          color: color,
-          enabled: isEnabled,
-        ),
+        leading: SettingsTileIcon(icon: icon, color: color, enabled: isEnabled),
         title: Text(
           title,
           style: TextStyle(
@@ -389,4 +378,3 @@ class SettingsSelectorTile<T> extends StatelessWidget {
     );
   }
 }
-

@@ -410,15 +410,6 @@ class _UpdateBottomSheetState extends State<UpdateBottomSheet> {
           children: [
             Row(
               children: [
-                SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2.2,
-                    value: progressVal != null && progressVal > 0 ? progressVal : null,
-                  ),
-                ),
-                const SizedBox(width: 12),
                 Expanded(
                   child: Text(
                     'Downloading update... ($percent%)',

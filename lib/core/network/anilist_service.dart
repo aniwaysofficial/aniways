@@ -174,6 +174,7 @@ query ($id: Int) {
     popularity
     favourites
     genres
+    isAdult
     tags { name rank }
     studios(isMain: true) { nodes { id name } }
     trailer { id site thumbnail }

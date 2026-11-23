@@ -153,6 +153,8 @@ class _ExtensionTile extends StatelessWidget {
                             ),
                             if (isVerifiedExtension(extension))
                               const VerifiedBadge(),
+                            if (extension.isAdult)
+                              const AdultBadge(),
                           ],
                         ),
                         const SizedBox(height: 2),
@@ -237,6 +239,10 @@ class _ExtensionDetailsSheet extends StatelessWidget {
                         if (isVerifiedExtension(extension))
                           const VerifiedBadge(
                             size: 20,
+                            padding: EdgeInsets.only(left: 6),
+                          ),
+                        if (extension.isAdult)
+                          const AdultBadge(
                             padding: EdgeInsets.only(left: 6),
                           ),
                       ],

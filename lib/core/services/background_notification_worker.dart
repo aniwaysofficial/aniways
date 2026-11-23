@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:aniways/core/database/app_database.dart';
 import 'package:aniways/core/database/repositories/subscription_repository.dart';
+import 'package:aniways/core/extensions/manager/extension_manager.dart';
 import 'package:aniways/core/logger.dart';
 import 'package:aniways/core/network/anilist_service.dart';
 import 'package:aniways/core/services/app_info_service.dart';
@@ -13,7 +14,6 @@ import 'package:aniways/models/anime_details.dart';
 import 'package:workmanager/workmanager.dart';
 
 const String kEpisodeCheckTaskName = 'com.aniways.tasks.EPISODE_CHECK';
-const String kTestNotificationTaskName = 'com.aniways.tasks.TEST_NOTIFICATION';
 
 /// Top-level callback dispatcher executed by Android WorkManager in a background isolate.
 @pragma('vm:entry-point')
@@ -22,27 +22,8 @@ void callbackDispatcher() {
     try {
       WidgetsFlutterBinding.ensureInitialized();
       await SharedPreferencesService().init();
-
-      if (task == kTestNotificationTaskName) {
-        final title =
-            inputData?['animeTitle'] as String? ??
-            'Frieren: Beyond Journey\'s End';
-        final animeId = (inputData?['animeId'] as num?)?.toInt() ?? 154587;
-        final episodeNumber =
-            (inputData?['episodeNumber'] as num?)?.toInt() ?? 29;
-        final coverUrl =
-            inputData?['coverUrl'] as String? ??
-            'https://s4.anilist.co/file/anilistcdn/media/anime/cover/large/bx154587-qQTzQnEJJ3oB.jpg';
-
-        await NotificationService.instance.showEpisodeNotification(
-          animeId: animeId,
-          animeTitle: title,
-          episodeNumber: episodeNumber,
-          audioLabel: 'Sub & Dub',
-          coverUrl: coverUrl,
-        );
-        return true;
-      }
+      await NotificationService.instance.init();
+      await extensionManager.initialize();
 
       if (!SharedPreferencesService().notificationEnabled) {
         return true;
@@ -60,7 +41,7 @@ void callbackDispatcher() {
 
 /// The core verification engine that scans subscribed anime and notifies only
 /// when new episodes are genuinely available across providers.
-Future<void> checkAndNotifyEpisodes() async {
+Future<void> checkAndNotifyEpisodes({bool forceCheck = false}) async {
   final subs = await SubscriptionRepository.instance.getActiveSubscriptions();
   if (subs.isEmpty) return;
 
@@ -70,27 +51,24 @@ Future<void> checkAndNotifyEpisodes() async {
   final repo = SubscriptionRepository.instance;
 
   for (final sub in subs) {
-    // Has this episode already been notified?
     if (sub.lastNotifiedEpisode >= sub.nextEpisodeNumber) {
       continue;
     }
 
-    // Is the episode expected to have aired in Japan?
-    // We add a minimal 40-minute buffer after Japanese broadcast before polling scrapers.
     final earliestCheckTime = sub.nextAiringAt.add(const Duration(minutes: 40));
-    if (now.isBefore(earliestCheckTime)) {
+    final expirationTime = sub.nextAiringAt.add(const Duration(hours: 12));
+
+    final isUpcoming = now.isBefore(sub.nextAiringAt);
+    final isEligible = !isUpcoming && (forceCheck || now.isAfter(earliestCheckTime));
+
+    if (!isEligible) {
       continue;
     }
 
-    // Maximum retry duration: 8 hours after broadcast
-    final expirationTime = sub.nextAiringAt.add(const Duration(hours: 8));
     final isPastExpiration = now.isAfter(expirationTime);
-
-    // Actively verify availability on providers
     final report = await checker.checkAvailability(
       anilistId: sub.animeId,
       episodeNumber: sub.nextEpisodeNumber,
-      // If we've retried many times (> 6 checks) and reached expiration, accept 1 provider
       minimumProviders: isPastExpiration ? 1 : null,
     );
 
@@ -105,11 +83,7 @@ Future<void> checkAndNotifyEpisodes() async {
         coverUrl: sub.coverUrl,
       );
 
-      // 2. Cancel fallback scheduled exact alarm and targeted task so duplicate doesn't fire
-      await notifier.cancelScheduledNotification(
-        sub.animeId,
-        sub.nextEpisodeNumber,
-      );
+      // 2. Cancel fallback targeted WorkManager task so duplicate doesn't fire
       try {
         await Workmanager().cancelByUniqueName(
           'verify_${sub.animeId}_${sub.nextEpisodeNumber}',
@@ -137,13 +111,36 @@ Future<void> checkAndNotifyEpisodes() async {
             updatedSub,
           );
         } else if (details.media.status?.toUpperCase() == 'FINISHED') {
-          // Series has completed its run: remove subscription
           await repo.unsubscribe(sub.animeId);
         }
       } catch (_) {}
     } else {
-      // Record check attempt to calculate progressive retry
       await repo.recordCheckAttempt(sub.animeId);
+      // If past expiration (12h) and not found, check if AniList already advanced multiple episodes
+      if (isPastExpiration) {
+        try {
+          final json = await anilistService.details(sub.animeId);
+          final details = AnimeDetails.fromJson(json);
+          final next = details.media.nextAiring;
+          if (next != null && next.episode > sub.nextEpisodeNumber) {
+            final nextAirDate = DateTime.fromMillisecondsSinceEpoch(
+              next.airingAt * 1000,
+            );
+            await repo.updateNextAiring(
+              sub.animeId,
+              next.episode,
+              nextAirDate,
+            );
+            final updatedSub = sub.copyWith(
+              nextEpisodeNumber: next.episode,
+              nextAiringAt: nextAirDate,
+            );
+            await BackgroundNotificationWorker.scheduleForSubscription(
+              updatedSub,
+            );
+          }
+        } catch (_) {}
+      }
     }
   }
 }
@@ -203,8 +200,8 @@ class BackgroundNotificationWorker {
       return;
     }
 
-    // Japanese broadcast + 45-minute provider buffer
-    final targetTime = sub.nextAiringAt.add(const Duration(minutes: 45));
+    // Japanese broadcast + 40-minute provider buffer
+    final targetTime = sub.nextAiringAt.add(const Duration(minutes: 40));
     final now = DateTime.now();
 
     if (targetTime.isAfter(now)) {
@@ -257,38 +254,6 @@ class BackgroundNotificationWorker {
     } catch (e) {
       log.w('Error rescheduling subscriptions: $e');
     }
-  }
-
-  static const String testTaskUniqueName = 'aniways_test_notification_task';
-
-  /// Schedules a test notification to be fired in the background after [delay].
-  /// This executes via WorkManager, proving that alerts will arrive even when the app is closed.
-  static Future<void> scheduleTestNotification({
-    required Duration delay,
-    String? animeTitle,
-    int? animeId,
-    int? episodeNumber,
-    String? coverUrl,
-  }) async {
-    await Workmanager().cancelByUniqueName(testTaskUniqueName);
-
-    await Workmanager().registerOneOffTask(
-      testTaskUniqueName,
-      kTestNotificationTaskName,
-      initialDelay: delay,
-      inputData: {
-        'animeTitle': animeTitle ?? 'Frieren: Beyond Journey\'s End',
-        'animeId': animeId ?? 154587,
-        'episodeNumber': episodeNumber ?? 29,
-        'coverUrl': coverUrl ?? 'https://s4.anilist.co/file/anilistcdn/media/anime/cover/large/bx154587-qQTzQnEJJ3oB.jpg',
-      },
-      existingWorkPolicy: ExistingWorkPolicy.replace,
-    );
-  }
-
-  /// Cancels any scheduled test notification.
-  static Future<void> cancelTestNotification() async {
-    await Workmanager().cancelByUniqueName(testTaskUniqueName);
   }
 
   @Deprecated('Use rescheduleAllSubscriptions instead')

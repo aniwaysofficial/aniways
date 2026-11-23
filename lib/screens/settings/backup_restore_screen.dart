@@ -167,6 +167,7 @@ class _BackupRestoreScreenState extends State<BackupRestoreScreen> {
     showOneUiBottomSheet<void>(
       context: context,
       showDragHandle: true,
+      useRootNavigator: false,
       builder: (sheetContext) {
         return SafeArea(
           child: Padding(
@@ -312,6 +313,7 @@ class _BackupRestoreScreenState extends State<BackupRestoreScreen> {
     showOneUiBottomSheet<void>(
       context: context,
       showDragHandle: true,
+      useRootNavigator: false,
       builder: (sheetContext) {
         final cs = Theme.of(sheetContext).colorScheme;
         final cat = CategoryColors.of(sheetContext);
@@ -547,6 +549,7 @@ class _BackupRestoreScreenState extends State<BackupRestoreScreen> {
     showOneUiBottomSheet<void>(
       context: context,
       showDragHandle: true,
+      useRootNavigator: false,
       builder: (sheetContext) {
         return StatefulBuilder(
           builder: (context, setModalState) {
@@ -924,8 +927,16 @@ class _BackupRestoreScreenState extends State<BackupRestoreScreen> {
                       'Off',
                       'Disable automatic backups (manual only)',
                     ),
-                    SettingsOption('daily', 'Daily', 'Create a backup once every day'),
-                    SettingsOption('weekly', 'Weekly', 'Create a backup once a week'),
+                    SettingsOption(
+                      'daily',
+                      'Daily',
+                      'Create a backup once every day',
+                    ),
+                    SettingsOption(
+                      'weekly',
+                      'Weekly',
+                      'Create a backup once a week',
+                    ),
                   ],
                   isFirst: false,
                   isLast: false,
@@ -991,7 +1002,11 @@ class _BackupRestoreScreenState extends State<BackupRestoreScreen> {
                   subtitle: maxCacheMb >= 1000 ? '1 GB' : '$maxCacheMb MB',
                   currentValue: maxCacheMb,
                   options: const [
-                    SettingsOption(100, '100 MB', 'Compact cache for limited storage'),
+                    SettingsOption(
+                      100,
+                      '100 MB',
+                      'Compact cache for limited storage',
+                    ),
                     SettingsOption(
                       250,
                       '250 MB (Recommended)',

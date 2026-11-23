@@ -18,7 +18,8 @@ class UpdateService {
   static final UpdateService instance = UpdateService._();
 
   static const String _prefLastCheckTime = 'app_update_last_check_ms';
-  static const String _prefLastNotifiedVersion = 'app_update_last_notified_version';
+  static const String _prefLastNotifiedVersion =
+      'app_update_last_notified_version';
   static const Duration autoCheckCooldown = Duration(hours: 12);
 
   final Dio _dio = Dio(
@@ -54,7 +55,10 @@ class UpdateService {
   Future<void> recordCheckTime() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setInt(_prefLastCheckTime, DateTime.now().millisecondsSinceEpoch);
+      await prefs.setInt(
+        _prefLastCheckTime,
+        DateTime.now().millisecondsSinceEpoch,
+      );
     } catch (e) {
       log.w('Could not record last update check time: $e');
     }
@@ -83,7 +87,8 @@ class UpdateService {
   /// Queries GitHub's latest release API and checks if a newer version is available.
   Future<UpdateCheckResult> checkForUpdate({bool isManual = false}) async {
     try {
-      final url = 'https://api.github.com/repos/${AppConstants.githubRepo}/releases/latest';
+      final url =
+          'https://api.github.com/repos/${AppConstants.githubRepo}/releases/latest';
       final response = await _dio.get<Map<String, dynamic>>(url);
 
       if (response.statusCode != 200 || response.data == null) {
@@ -100,10 +105,7 @@ class UpdateService {
       final currentVersion = AppInfoService.instance.version;
       final isNewer = release.isNewerThan(currentVersion);
 
-      return UpdateCheckResult(
-        hasUpdate: isNewer,
-        release: release,
-      );
+      return UpdateCheckResult(hasUpdate: isNewer, release: release);
     } on DioException catch (e) {
       if (e.response?.statusCode == 404) {
         return const UpdateCheckResult(
@@ -114,7 +116,8 @@ class UpdateService {
       if (e.response?.statusCode == 403) {
         return const UpdateCheckResult(
           hasUpdate: false,
-          errorMessage: 'GitHub API rate limit exceeded. Please try again later.',
+          errorMessage:
+              'GitHub API rate limit exceeded. Please try again later.',
         );
       }
       return UpdateCheckResult(
@@ -133,7 +136,9 @@ class UpdateService {
   /// Returns the target updates directory in the app's local cache.
   Future<Directory> getUpdatesDirectory() async {
     final tempDir = await getTemporaryDirectory();
-    final updateDir = Directory('${tempDir.path}${Platform.pathSeparator}updates');
+    final updateDir = Directory(
+      '${tempDir.path}${Platform.pathSeparator}updates',
+    );
     if (!await updateDir.exists()) {
       await updateDir.create(recursive: true);
     }
@@ -177,10 +182,7 @@ class UpdateService {
         cancelToken: cancelToken,
         onReceiveProgress: (received, total) {
           onProgress(
-            DownloadProgress(
-              receivedBytes: received,
-              totalBytes: total,
-            ),
+            DownloadProgress(receivedBytes: received, totalBytes: total),
           );
         },
       );
@@ -203,4 +205,3 @@ class UpdateService {
     }
   }
 }
-

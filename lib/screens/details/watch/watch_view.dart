@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'package:aniways/core/constants.dart';
+import 'package:aniways/core/helpers.dart';
 import 'package:aniways/core/network/anilist_service.dart';
 import 'package:aniways/core/network/extractor_service.dart';
 import 'package:aniways/core/responsive.dart';
@@ -592,6 +593,14 @@ class _HeroPreviewCard extends StatelessWidget {
     final isEpisodesError = wp.state == WatchState.error && wp.episodes.isEmpty;
     final isNoExtensions = wp.state == WatchState.noExtensions;
     final watchedPercent = ep != null ? wp.watchedPercentages[ep.number] : null;
+    final epProgress = ep != null ? wp.episodeProgressMap[ep.number] : null;
+    final hasProgress = epProgress != null &&
+        epProgress.position > Duration.zero &&
+        epProgress.duration > Duration.zero &&
+        !epProgress.isCompleted;
+    final progressTimeStr = hasProgress
+        ? '${formatDuration(epProgress.position)} / ${formatDuration(epProgress.duration)}'
+        : '';
     final isPartiallyWatched =
         watchedPercent != null &&
         watchedPercent > 0.01 &&
@@ -817,6 +826,36 @@ class _HeroPreviewCard extends StatelessWidget {
                       ),
                     ),
             ),
+
+            // Time seen & duration badge on poster corner (bottom-right)
+            if (progressTimeStr.isNotEmpty)
+              Positioned(
+                right: 12,
+                bottom: 10,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 7,
+                    vertical: 3,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.50),
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.12),
+                      width: 0.5,
+                    ),
+                  ),
+                  child: Text(
+                    progressTimeStr,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 0.2,
+                    ),
+                  ),
+                ),
+              ),
 
             if (watchedPercent != null && watchedPercent > 0)
               Positioned(

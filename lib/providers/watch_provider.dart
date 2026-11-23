@@ -153,6 +153,7 @@ class WatchProvider extends ChangeNotifier {
 
   // Watched progress map (episodeNumber -> percent 0.0 to 1.0)
   Map<int, double> watchedPercentages = {};
+  Map<int, EpisodeProgressInfo> episodeProgressMap = {};
 
   // Transient notice for user (e.g. "Source unavailable. Switched to Aniwaves")
   String? statusNotice;
@@ -384,7 +385,28 @@ class WatchProvider extends ChangeNotifier {
           await extensionManager.dbRepository.getInstalledExtensions();
       hasExtensionsInstalled = installed.isNotEmpty;
 
-      availableProviders = await extractorService.providers();
+      final allProviders = await extractorService.providers();
+      final adultEnabled = _prefs.enableAdultContent;
+      final isAnimeAdult = anime.isAdult;
+
+      // Filter adult providers:
+      // - If adult content is disabled globally, adult extensions are excluded.
+      // - If the current anime is not 18+ adult, adult extensions are excluded.
+      availableProviders = allProviders.where((p) {
+        if (p.isAdult && (!adultEnabled || !isAnimeAdult)) {
+          return false;
+        }
+        return true;
+      }).toList();
+
+      if (isAnimeAdult && adultEnabled) {
+        // Prioritize adult-specialized providers for 18+ adult anime
+        availableProviders.sort((a, b) {
+          if (a.isAdult && !b.isAdult) return -1;
+          if (!a.isAdult && b.isAdult) return 1;
+          return 0;
+        });
+      }
       if (_isDisposed) return;
 
       if (availableProviders.isEmpty) {
@@ -419,17 +441,39 @@ class WatchProvider extends ChangeNotifier {
           savedPrefs?.customPlaybackSpeed ?? _prefs.defaultPlaybackSpeed;
 
       // 2. Audio (Sub vs Dub): per-anime override -> watch state -> default preference
+      // Note: 18+ adult anime is almost universally Japanese audio with subtitles.
+      // If the anime is 18+ and there is no explicit per-anime override, default to Sub
+      // so a global Dub setting doesn't reject 18+ providers or prioritize non-existent dubs.
       final audioPref = savedPrefs?.preferredAudio ??
           savedState?.audio ??
-          _prefs.defaultAudioTrack;
+          (isAnimeAdult && adultEnabled ? 'sub' : _prefs.defaultAudioTrack);
       if (audioPref == 'dub') {
         selectedAudio = StreamAudio.dub;
       } else {
         selectedAudio = StreamAudio.sub;
       }
 
-      // 3. Provider: per-anime override -> watch state
-      String? initialProvider = savedPrefs?.preferredProvider ?? savedState?.provider;
+      // Filter effective pool based on audio preference (if dub is wanted, prefer dub-supporting providers)
+      // For 18+ adult titles, adult providers must never be stripped out of poolToUse.
+      final poolForAudio = selectedAudio == StreamAudio.dub
+          ? effectivePool
+              .where((p) => p.supports(StreamAudio.dub) || (isAnimeAdult && p.isAdult))
+              .toList()
+          : effectivePool;
+      final poolToUse = poolForAudio.isNotEmpty ? poolForAudio : effectivePool;
+
+      // 3. Provider: per-anime override -> watch state (filtered for 18+ titles)
+      String? initialProvider = savedPrefs?.preferredProvider;
+      if (initialProvider == null && savedState?.provider != null) {
+        final savedId = savedState!.provider;
+        final isSavedAdult = poolToUse.any((p) => p.id == savedId && p.isAdult);
+        final hasAdultCandidate = poolToUse.any((p) => p.isAdult);
+        // If this is an 18+ title, only use savedState provider if it was already an adult provider,
+        // or if there are no adult providers in the pool.
+        if (!isAnimeAdult || isSavedAdult || !hasAdultCandidate) {
+          initialProvider = savedId;
+        }
+      }
 
       // 4. Server, Quality, Subtitle overrides
       _preferredServer = savedPrefs?.preferredServer;
@@ -443,18 +487,24 @@ class WatchProvider extends ChangeNotifier {
       }
       _preferredSubtitleTrack = savedPrefs?.preferredSubtitleTrack;
 
-      // Filter effective pool based on audio preference (if dub is wanted, prefer dub-supporting providers)
-      final poolForAudio = selectedAudio == StreamAudio.dub
-          ? effectivePool.where((p) => p.supports(StreamAudio.dub)).toList()
-          : effectivePool;
-      final poolToUse = poolForAudio.isNotEmpty ? poolForAudio : effectivePool;
-
       // Validate saved provider is in pool or select by priority
       if (initialProvider == null || !poolToUse.any((p) => p.id == initialProvider)) {
-        for (final candidate in _providerPriority) {
-          if (poolToUse.any((p) => p.id == candidate)) {
-            initialProvider = candidate;
-            break;
+        initialProvider = null;
+        if (isAnimeAdult && adultEnabled) {
+          // For 18+ adult anime without a saved preference, prioritize adult providers first
+          for (final p in poolToUse) {
+            if (p.isAdult) {
+              initialProvider = p.id;
+              break;
+            }
+          }
+        }
+        if (initialProvider == null) {
+          for (final candidate in _providerPriority) {
+            if (poolToUse.any((p) => p.id == candidate)) {
+              initialProvider = candidate;
+              break;
+            }
           }
         }
       }
@@ -471,9 +521,24 @@ class WatchProvider extends ChangeNotifier {
   }
 
   Future<void> _loadEpisodesWithFallback(String initialProviderId, {int? preferredEpisode}) async {
-    // If selectedAudio is Dub, prioritize dub-capable providers first
     final toTry = <String>[];
-    if (selectedAudio == StreamAudio.dub) {
+    final isAnimeAdult = _anime?.isAdult ?? false;
+    final adultEnabled = _prefs.enableAdultContent;
+
+    if (isAnimeAdult && adultEnabled) {
+      // For 18+ adult anime, prioritize adult-specialized providers first to minimize fallback latency
+      toTry.addAll(
+        availableProviders
+            .where((p) => p.isAdult && p.isOnline)
+            .map((p) => p.id),
+      );
+      toTry.addAll(
+        availableProviders
+            .where((p) => p.isAdult && !p.isOnline)
+            .map((p) => p.id),
+      );
+    } else if (selectedAudio == StreamAudio.dub) {
+      // If selectedAudio is Dub, prioritize dub-capable providers first
       toTry.addAll(
         availableProviders
             .where((p) => p.isOnline && p.supports(StreamAudio.dub))
@@ -510,13 +575,17 @@ class WatchProvider extends ChangeNotifier {
           // If user wanted DUB, but this provider only has SUB:
           // Check if there are other providers in toTry that support DUB!
           if (selectedAudio == StreamAudio.dub && !result.hasDub) {
-            final hasRemainingDubCandidates = toTry
-                .skip(i + 1)
-                .any((id) => availableProviders
-                    .any((p) => p.id == id && p.supports(StreamAudio.dub)));
-            if (hasRemainingDubCandidates) {
-              // Don't settle for sub yet! Keep looking for a Dub provider.
-              continue;
+            final isCurrentAdult = availableProviders.any((p) => p.id == providerId && p.isAdult);
+            // On 18+ adult anime, never skip an adult provider just to search for non-existent dubs on mainstream providers
+            if (!isAnimeAdult && !isCurrentAdult) {
+              final hasRemainingDubCandidates = toTry
+                  .skip(i + 1)
+                  .any((id) => availableProviders
+                      .any((p) => p.id == id && p.supports(StreamAudio.dub)));
+              if (hasRemainingDubCandidates) {
+                // Don't settle for sub yet! Keep looking for a Dub provider.
+                continue;
+              }
             }
             // All dub providers failed or had no dub for this anime.
             selectedAudio = StreamAudio.sub;
@@ -1513,6 +1582,17 @@ class WatchProvider extends ChangeNotifier {
               providerId: selectedProviderId,
               audio: selectedAudio.name,
             );
+            final durMs = d.inMilliseconds;
+            if (durMs > 0) {
+              final pct = (p.inMilliseconds / durMs).clamp(0.0, 1.0);
+              episodeProgressMap[currentEpisode!.number] = (
+                position: p,
+                duration: d,
+                percent: pct,
+                isCompleted: pct >= 0.90,
+              );
+              watchedPercentages[currentEpisode!.number] = pct;
+            }
           }
         }
 
@@ -2475,9 +2555,12 @@ class WatchProvider extends ChangeNotifier {
   Future<void> _refreshWatchedProgress() async {
     if (_isDisposed) return;
     if (_anime != null) {
-      final res = await _watchRepo.getWatchedPercentages(_anime!.id);
+      final progressMap = await _watchRepo.getAllEpisodeProgress(_anime!.id);
       if (_isDisposed) return;
-      watchedPercentages = res;
+      episodeProgressMap = progressMap;
+      watchedPercentages = {
+        for (final entry in progressMap.entries) entry.key: entry.value.percent,
+      };
 
       // If playback is halted and the current episode is already completed (>= 90%),
       // advance currentEpisode to the next unwatched episode so that the hero banner

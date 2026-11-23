@@ -58,8 +58,21 @@ class ContinueWatchingSection extends StatelessWidget {
                             ? item.anime.bannerUrl!
                             : (item.anime.coverUrl ?? '');
 
-                    final posStr = formatDuration(item.position);
-                    final durStr = formatDuration(item.duration);
+                    final hasProgress = item.duration > Duration.zero &&
+                        item.position > Duration.zero &&
+                        !item.isCompleted;
+                    final progressTimeStr = hasProgress
+                        ? '${formatDuration(item.position)} / ${formatDuration(item.duration)}'
+                        : '';
+
+                    final String subtitle;
+                    if (item.history.episodeTitle != null &&
+                        item.history.episodeTitle!.isNotEmpty) {
+                      subtitle =
+                          'EP ${item.episodeNumber} · ${item.history.episodeTitle!}';
+                    } else {
+                      subtitle = 'Play Episode ${item.episodeNumber}';
+                    }
 
                     return SizedBox(
                       width: cardWidth,
@@ -174,6 +187,33 @@ class ContinueWatchingSection extends StatelessWidget {
                                       ),
                                     ),
                                   ),
+                                  // Time seen & duration badge on thumbnail (bottom-right)
+                                  if (progressTimeStr.isNotEmpty)
+                                    Positioned(
+                                      right: 8,
+                                      bottom: 8,
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 6,
+                                          vertical: 2.5,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: Colors.black
+                                              .withValues(alpha: 0.50),
+                                          borderRadius:
+                                              BorderRadius.circular(6),
+                                        ),
+                                        child: Text(
+                                          progressTimeStr,
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 10,
+                                            fontWeight: FontWeight.w600,
+                                            letterSpacing: 0.2,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
                                   // Progress bar
                                   Positioned(
                                     left: 0,
@@ -207,13 +247,7 @@ class ContinueWatchingSection extends StatelessWidget {
                             ),
                             const SizedBox(height: 2),
                             Text(
-                              item.history.episodeTitle != null &&
-                                      item.history.episodeTitle!.isNotEmpty
-                                  ? item.history.episodeTitle!
-                                  : (item.duration > Duration.zero &&
-                                          item.position > Duration.zero)
-                                      ? '$posStr / $durStr'
-                                      : 'Play Episode ${item.episodeNumber}',
+                              subtitle,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: Theme.of(context)

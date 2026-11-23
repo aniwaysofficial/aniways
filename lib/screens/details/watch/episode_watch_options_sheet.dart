@@ -260,6 +260,7 @@ class _EpisodeWatchOptionsContent extends StatelessWidget {
                       context,
                       message: 'Marked Episode ${episode.number} as unwatched',
                       icon: Icons.history_toggle_off_rounded,
+                      customAccent: accent,
                     );
                   }
                 },
@@ -281,7 +282,8 @@ class _EpisodeWatchOptionsContent extends StatelessWidget {
                     AniwaysSnackBar.show(
                       context,
                       message: 'Marked Episode ${episode.number} as watched',
-                      icon: Icons.check_circle_outline_rounded,
+                      icon: Icons.check_circle_rounded,
+                      customAccent: accent,
                     );
                   }
                 },
@@ -306,6 +308,7 @@ class _EpisodeWatchOptionsContent extends StatelessWidget {
                       context,
                       message: 'Marked episodes 1–${episode.number} as watched',
                       icon: Icons.done_all_rounded,
+                      customAccent: accent,
                     );
                   }
                 },
@@ -331,6 +334,7 @@ class _EpisodeWatchOptionsContent extends StatelessWidget {
                       context,
                       message: 'Unmarked episodes 1–${episode.number}',
                       icon: Icons.history_toggle_off_rounded,
+                      customAccent: accent,
                     );
                   }
                 },

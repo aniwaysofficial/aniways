@@ -6,6 +6,7 @@ import 'package:aniways/core/network/extractor_service.dart';
 import 'package:aniways/core/widgets/extension_icon.dart';
 import 'package:aniways/core/widgets/one_ui_bottom_sheet.dart';
 import 'package:aniways/providers/watch_provider.dart';
+import 'package:aniways/screens/settings/extensions/extensions_shared.dart';
 
 /// Categories available in the settings sheet / panel.
 enum WatchSettingsCategory { audio, provider, quality, speed, subtitles }
@@ -832,18 +833,28 @@ class _WatchSettingsSheetState extends State<WatchSettingsSheet> {
                         size: 32,
                         borderRadius: 8,
                       ),
-                      title: Text(
-                        provider.displayName,
-                        style: TextStyle(
-                          fontWeight: isSelected
-                              ? FontWeight.w800
-                              : FontWeight.w600,
-                          color: isSelected
-                              ? widget.accent
-                              : (isEnabled
-                                    ? cs.onSurface
-                                    : cs.onSurface.withValues(alpha: 0.38)),
-                        ),
+                      title: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Flexible(
+                            child: Text(
+                              provider.displayName,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontWeight: isSelected
+                                    ? FontWeight.w800
+                                    : FontWeight.w600,
+                                color: isSelected
+                                    ? widget.accent
+                                    : (isEnabled
+                                          ? cs.onSurface
+                                          : cs.onSurface.withValues(alpha: 0.38)),
+                              ),
+                            ),
+                          ),
+                          if (provider.isAdult)
+                            const AdultBadge(padding: EdgeInsets.only(left: 6)),
+                        ],
                       ),
                       subtitle: Row(
                         children: [

@@ -29,7 +29,7 @@ class NotificationService {
   static const String episodeGroupKey = 'com.aniways.notifications.EPISODES';
 
   /// Fixed notification ID for the group summary
-  static const int groupSummaryId = 999999;
+  static const int groupSummaryId = 999998;
 
   /// Callback when user taps a notification
   static void Function(Map<String, dynamic> payload)? onNotificationTapped;
@@ -69,6 +69,10 @@ class NotificationService {
         if (payloadStr != null && payloadStr.isNotEmpty) {
           final data = jsonDecode(payloadStr) as Map<String, dynamic>;
           _pendingPayload = data;
+          if (onNotificationTapped != null) {
+            _pendingPayload = null;
+            onNotificationTapped?.call(data);
+          }
         }
       }
     } catch (e) {
@@ -235,6 +239,7 @@ class NotificationService {
       importance: Importance.high,
       priority: Priority.high,
       groupKey: episodeGroupKey,
+      groupAlertBehavior: GroupAlertBehavior.children,
       icon: '@mipmap/ic_launcher',
       largeIcon: posterPath != null ? FilePathAndroidBitmap(posterPath) : null,
       styleInformation: bigTextStyle,
@@ -301,24 +306,51 @@ class NotificationService {
   }
 
   /// Shows or updates the summary notification for the episode group.
+  /// Only posts a summary when two or more episode alerts are active in the shade,
+  /// preventing generic summary collapsing when only a single anime episode arrives.
   Future<void> _updateGroupSummary() async {
-    const summaryDetails = AndroidNotificationDetails(
-      channelId,
-      channelName,
-      channelDescription: channelDesc,
-      importance: Importance.high,
-      priority: Priority.high,
-      groupKey: episodeGroupKey,
-      setAsGroupSummary: true,
-      icon: '@mipmap/ic_launcher',
-    );
+    final android = _notifications.resolvePlatformSpecificImplementation<
+        AndroidFlutterLocalNotificationsPlugin>();
+    if (android == null) return;
 
-    await _notifications.show(
-      id: groupSummaryId,
-      title: 'Aniways · New Episodes Ready',
-      body: 'New anime episodes are verified and ready to stream',
-      notificationDetails: const NotificationDetails(android: summaryDetails),
-    );
+    try {
+      final active = await android.getActiveNotifications();
+      // Count active notifications belonging to the episode group/channel (excluding the summary)
+      final episodeNotifs = active
+              ?.where((n) =>
+                  n.id != groupSummaryId &&
+                  (n.groupKey == episodeGroupKey || n.channelId == channelId))
+              .toList() ??
+          [];
+
+      if (episodeNotifs.length <= 1) {
+        // If there's only 0 or 1 episode notification, cancel the group summary so Android
+        // renders the full rich card (poster, title, episode) without collapsing into a generic summary.
+        await _notifications.cancel(id: groupSummaryId);
+        return;
+      }
+
+      final summaryDetails = AndroidNotificationDetails(
+        channelId,
+        channelName,
+        channelDescription: channelDesc,
+        importance: Importance.high,
+        priority: Priority.high,
+        groupKey: episodeGroupKey,
+        setAsGroupSummary: true,
+        groupAlertBehavior: GroupAlertBehavior.children,
+        icon: '@mipmap/ic_launcher',
+      );
+
+      await _notifications.show(
+        id: groupSummaryId,
+        title: 'Aniways · ${episodeNotifs.length} New Episodes Ready',
+        body: '${episodeNotifs.length} anime episodes are verified and ready to stream',
+        notificationDetails: NotificationDetails(android: summaryDetails),
+      );
+    } catch (e) {
+      log.w('Could not update group summary: $e');
+    }
   }
 
   /// Cancels all notifications for a specific anime series.

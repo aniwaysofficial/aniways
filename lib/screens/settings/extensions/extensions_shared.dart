@@ -47,6 +47,48 @@ class VerifiedBadge extends StatelessWidget {
   }
 }
 
+/// A subtle 18+ adult maturity badge for adult extensions.
+class AdultBadge extends StatelessWidget {
+  const AdultBadge({
+    super.key,
+    this.padding = const EdgeInsets.only(left: 6),
+  });
+
+  final EdgeInsetsGeometry padding;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Padding(
+      padding: padding,
+      child: Tooltip(
+        message: '18+ Adult Provider',
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+          decoration: BoxDecoration(
+            color: cs.error.withValues(alpha: 0.14),
+            borderRadius: BorderRadius.circular(5),
+            border: Border.all(
+              color: cs.error.withValues(alpha: 0.40),
+              width: 0.8,
+            ),
+          ),
+          child: Text(
+            '18+',
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w800,
+              color: cs.error,
+              letterSpacing: 0.2,
+              height: 1.1,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// "Sub", "Dub" or "Sub · Dub" (empty string when neither is available).
 String langLabel(ExtensionManifest m) =>
     [if (m.hasSub) 'Sub', if (m.hasDub) 'Dub'].join(' · ');

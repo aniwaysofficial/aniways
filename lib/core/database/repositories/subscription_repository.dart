@@ -130,6 +130,35 @@ class SubscriptionRepository {
     );
   }
 
+  /// Synchronizes an active subscription with the latest AniList schedule.
+  /// If the episode has already been notified, advances [nextEpisodeNumber] to [nextEpisode].
+  /// If schedule changed for the pending episode, updates [nextAiringAt].
+  Future<void> syncWithLatestAiring({
+    required int animeId,
+    required int nextEpisode,
+    required DateTime airingAt,
+  }) async {
+    final entry = await (_db.select(_db.episodeSubscriptions)
+          ..where(
+            (t) => t.animeId.equals(animeId) & t.isSubscribed.equals(true),
+          ))
+        .getSingleOrNull();
+    if (entry == null) return;
+
+    if (entry.lastNotifiedEpisode >= entry.nextEpisodeNumber ||
+        nextEpisode > entry.nextEpisodeNumber + 1) {
+      await updateNextAiring(animeId, nextEpisode, airingAt);
+      final updated = entry.copyWith(
+        nextEpisodeNumber: nextEpisode,
+        nextAiringAt: airingAt,
+      );
+      await BackgroundNotificationWorker.scheduleForSubscription(updated);
+    } else if (entry.nextEpisodeNumber == nextEpisode &&
+        entry.nextAiringAt != airingAt) {
+      await updateNextAiring(animeId, nextEpisode, airingAt);
+    }
+  }
+
   /// Records that a notification was dispatched for [episodeNumber].
   Future<void> recordNotified(int animeId, int episodeNumber) async {
     await (_db.update(_db.episodeSubscriptions)

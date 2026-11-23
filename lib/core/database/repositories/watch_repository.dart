@@ -3,6 +3,13 @@ import 'package:drift/drift.dart';
 import 'package:aniways/core/database/app_database.dart';
 import 'package:aniways/models/anime_media.dart';
 
+typedef EpisodeProgressInfo = ({
+  Duration position,
+  Duration duration,
+  double percent,
+  bool isCompleted,
+});
+
 class ContinueWatchingItem {
   const ContinueWatchingItem({
     required this.anime,
@@ -173,8 +180,8 @@ class WatchRepository {
   }
 
   /// Retrieves progress for a specific episode.
-  Future<({Duration position, Duration duration, double percent, bool isCompleted})?>
-      getEpisodeProgress(int animeId, int episodeNumber) async {
+  Future<EpisodeProgressInfo?> getEpisodeProgress(
+      int animeId, int episodeNumber) async {
     final row = await (_db.select(_db.episodeProgress)
           ..where((t) =>
               t.animeId.equals(animeId) &
@@ -188,6 +195,24 @@ class WatchRepository {
       percent: row.progressPercent,
       isCompleted: row.isCompleted,
     );
+  }
+
+  /// Retrieves progress for all episodes of an anime.
+  Future<Map<int, EpisodeProgressInfo>> getAllEpisodeProgress(
+      int animeId) async {
+    final rows = await (_db.select(_db.episodeProgress)
+          ..where((t) => t.animeId.equals(animeId)))
+        .get();
+
+    return {
+      for (final r in rows)
+        r.episodeNumber: (
+          position: Duration(milliseconds: r.positionMs),
+          duration: Duration(milliseconds: r.durationMs),
+          percent: r.progressPercent,
+          isCompleted: r.isCompleted,
+        ),
+    };
   }
 
   /// Returns a map of episode numbers to watched percentages for an anime.

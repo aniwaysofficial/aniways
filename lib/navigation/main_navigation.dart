@@ -72,8 +72,12 @@ class _TabNavObserver extends NavigatorObserver {
   bool get canPop => _pageStack.length > 1;
 
   void _notify() {
-    _MainNavigationState._activeState?._updateNavPill();
-    _MainNavigationState._activeState?._updateRailTheme();
+    final state = _MainNavigationState._activeState;
+    if (state != null && state.mounted) {
+      state._updateNavPill();
+      state._updateRailTheme();
+      state._onNavStackChanged();
+    }
   }
 
   @override
@@ -376,6 +380,12 @@ class _MainNavigationState extends State<MainNavigation> {
     MainNavigation.tabRailThemes.value = updated;
   }
 
+  void _onNavStackChanged() {
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -385,6 +395,13 @@ class _MainNavigationState extends State<MainNavigation> {
       _updateRailTheme();
       _checkStartupUpdate();
     });
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _updateNavPill();
+    _updateRailTheme();
   }
 
   Future<void> _checkStartupUpdate() async {
@@ -416,6 +433,7 @@ class _MainNavigationState extends State<MainNavigation> {
       _navKeys[i].currentState?.popUntil((r) => r.isFirst);
       _updateNavPill();
       _updateRailTheme();
+      setState(() {});
       return;
     }
     setState(() {
@@ -433,6 +451,16 @@ class _MainNavigationState extends State<MainNavigation> {
     final isDark = theme.brightness == Brightness.dark;
     final primary = cs.primary;
     final isWide = context.hasSideNav;
+
+    // Ensure nav pill visibility stays synchronized across rotation/fold/resize
+    final showNavPill = !isWide && !_canPop;
+    if (MainNavigation.navPillVisible.value != showNavPill) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && MainNavigation.navPillVisible.value != showNavPill) {
+          MainNavigation.navPillVisible.value = showNavPill;
+        }
+      });
+    }
 
     final isPureBlack =
         isDark &&
@@ -493,7 +521,8 @@ class _MainNavigationState extends State<MainNavigation> {
                                       child: HeroControllerScope(
                                         controller: _heroControllers[i],
                                         child: NavigatorPopHandler(
-                                          enabled: _index == i,
+                                          enabled: _index == i &&
+                                              _observers[i].canPop,
                                           onPopWithResult: (_) {
                                             _navKeys[i].currentState?.maybePop();
                                           },

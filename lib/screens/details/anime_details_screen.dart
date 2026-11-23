@@ -25,6 +25,7 @@ import 'package:aniways/navigation/main_navigation.dart'
     show
         FullBleedScreen,
         MainNavigation,
+        NavBarScope,
         kNavBarBottomMargin,
         kNavBarHeight,
         kRailWidth,
@@ -52,7 +53,7 @@ const double _kFadeDistance = 120;
 ///
 /// Opens instantly with cached [AnimeMedia] (cover, title, score, genres),
 /// and loads full details (characters, synopsis, studios, relations) from AniList.
-class AnimeDetailsScreen extends StatefulWidget implements FullBleedScreen {
+class AnimeDetailsScreen extends StatelessWidget implements FullBleedScreen {
   const AnimeDetailsScreen({
     super.key,
     required this.anime,
@@ -65,10 +66,37 @@ class AnimeDetailsScreen extends StatefulWidget implements FullBleedScreen {
   final int initialTab;
 
   @override
-  State<AnimeDetailsScreen> createState() => _AnimeDetailsScreenState();
+  Widget build(BuildContext context) {
+    final isWide = context.hasSideNav;
+    final isDualPane = context.layoutSize.atLeast(WindowSize.expanded);
+    return NavBarScope(
+      hasBottomNavBar: !isWide && !isDualPane,
+      child: _AnimeDetailsScreenBody(
+        anime: anime,
+        heroTag: heroTag,
+        initialTab: initialTab,
+      ),
+    );
+  }
 }
 
-class _AnimeDetailsScreenState extends State<AnimeDetailsScreen> {
+class _AnimeDetailsScreenBody extends StatefulWidget {
+  const _AnimeDetailsScreenBody({
+    required this.anime,
+    this.heroTag,
+    this.initialTab = 0,
+  });
+
+  final AnimeMedia anime;
+  final String? heroTag;
+  final int initialTab;
+
+  @override
+  State<_AnimeDetailsScreenBody> createState() =>
+      _AnimeDetailsScreenBodyState();
+}
+
+class _AnimeDetailsScreenBodyState extends State<_AnimeDetailsScreenBody> {
   final ScrollController _scroll = ScrollController();
   final ValueNotifier<double> _barOpacity = ValueNotifier<double>(0);
 
@@ -81,7 +109,9 @@ class _AnimeDetailsScreenState extends State<AnimeDetailsScreen> {
 
   AnimeDetails? _details;
   Object? _error;
-  late final ValueNotifier<AnimeDetails?> _detailsNotifier = ValueNotifier(_details);
+  late final ValueNotifier<AnimeDetails?> _detailsNotifier = ValueNotifier(
+    _details,
+  );
   static Map<String, String>? _globalGenreCovers;
   late final ValueNotifier<Map<String, String>?> _genreCoversNotifier =
       ValueNotifier(_globalGenreCovers);
@@ -90,9 +120,18 @@ class _AnimeDetailsScreenState extends State<AnimeDetailsScreen> {
   final ValueNotifier<bool> _subscribedNotifier = ValueNotifier(false);
   final ValueNotifier<String?> _watchStatusNotifier = ValueNotifier(null);
   final ValueNotifier<({int episode, String provider, String audio})?>
-      _savedWatchStateNotifier = ValueNotifier(null);
+  _savedWatchStateNotifier = ValueNotifier(null);
 
   Color? _currentAccent;
+
+  Color get _effectiveAccent {
+    final themeProvider = Provider.of<ThemeProvider?>(context, listen: false);
+    final useCoverColor = themeProvider?.useCoverColorAccent ?? true;
+    if (useCoverColor && _currentAccent != null) {
+      return _currentAccent!;
+    }
+    return Theme.of(context).colorScheme.primary;
+  }
   StreamSubscription<bool>? _savedSub;
   StreamSubscription<bool>? _subscribedSub;
   StreamSubscription<String?>? _watchStatusSub;
@@ -118,7 +157,8 @@ class _AnimeDetailsScreenState extends State<AnimeDetailsScreen> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    if (context.layoutSize.atLeast(WindowSize.expanded) && !_hasOpenedWatchTab) {
+    if (context.layoutSize.atLeast(WindowSize.expanded) &&
+        !_hasOpenedWatchTab) {
       _initWatchTab();
       _watchProvider.handleTabVisibility(true);
     }
@@ -224,6 +264,16 @@ class _AnimeDetailsScreenState extends State<AnimeDetailsScreen> {
       if (d.media.isUpcoming && _hasOpenedWatchTab) {
         _initWatchTab();
       }
+      final next = d.media.nextAiring;
+      if (next != null) {
+        unawaited(
+          SubscriptionRepository.instance.syncWithLatestAiring(
+            animeId: widget.anime.id,
+            nextEpisode: next.episode,
+            airingAt: DateTime.fromMillisecondsSinceEpoch(next.airingAt * 1000),
+          ),
+        );
+      }
     } catch (e) {
       if (!mounted) return;
       setState(() => _error = e);
@@ -246,14 +296,15 @@ class _AnimeDetailsScreenState extends State<AnimeDetailsScreen> {
           ? 'Added "${widget.anime.title}" to favorites'
           : 'Removed "${widget.anime.title}" from favorites',
       icon: isFav ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+      customAccent: _effectiveAccent,
     );
   }
 
   Future<void> _toggleSubscription() async {
     final media = _details?.media ?? widget.anime;
     final nextAiring = _details?.media.nextAiring ?? widget.anime.nextAiring;
-    final currentlySubscribed =
-        await SubscriptionRepository.instance.isSubscribed(media.id);
+    final currentlySubscribed = await SubscriptionRepository.instance
+        .isSubscribed(media.id);
 
     if (!currentlySubscribed &&
         !SubscriptionRepository.instance.canSubscribe(media, nextAiring)) {
@@ -262,6 +313,7 @@ class _AnimeDetailsScreenState extends State<AnimeDetailsScreen> {
         context,
         message: '"${widget.anime.title}" has already finished airing',
         icon: Icons.info_outline_rounded,
+        customAccent: _effectiveAccent,
       );
       return;
     }
@@ -278,6 +330,7 @@ class _AnimeDetailsScreenState extends State<AnimeDetailsScreen> {
       icon: isSubscribed
           ? Icons.notifications_active_rounded
           : Icons.notifications_none_rounded,
+      customAccent: _effectiveAccent,
     );
   }
 
@@ -295,6 +348,7 @@ class _AnimeDetailsScreenState extends State<AnimeDetailsScreen> {
       context,
       message: 'Link for "${anime.title}" copied to clipboard',
       icon: Icons.copy_rounded,
+      customAccent: _effectiveAccent,
     );
   }
 
@@ -306,6 +360,7 @@ class _AnimeDetailsScreenState extends State<AnimeDetailsScreen> {
         context,
         message: 'Trailer is currently unavailable',
         icon: Icons.videocam_off_rounded,
+        customAccent: _effectiveAccent,
       );
       return;
     }
@@ -331,17 +386,11 @@ class _AnimeDetailsScreenState extends State<AnimeDetailsScreen> {
       );
 
       if (!launched && mounted) {
-        AniwaysSnackBar.error(
-          context,
-          message: 'Could not open trailer link',
-        );
+        AniwaysSnackBar.error(context, message: 'Could not open trailer link');
       }
     } catch (e) {
       if (!mounted) return;
-      AniwaysSnackBar.error(
-        context,
-        message: 'Failed to open trailer: $e',
-      );
+      AniwaysSnackBar.error(context, message: 'Failed to open trailer: $e');
     }
   }
 
@@ -387,16 +436,16 @@ class _AnimeDetailsScreenState extends State<AnimeDetailsScreen> {
     final pageBg = isPureBlack
         ? const Color(0xFF000000)
         : (useCoverColor
-            ? (isDark
-                ? Color.alphaBlend(
-                    accent.withValues(alpha: 0.14),
-                    const Color(0xFF0A0B0E),
-                  )
-                : Color.alphaBlend(
-                    accent.withValues(alpha: 0.07),
-                    const Color(0xFFF7F7FA),
-                  ))
-            : parentTheme.scaffoldBackgroundColor);
+              ? (isDark
+                    ? Color.alphaBlend(
+                        accent.withValues(alpha: 0.14),
+                        const Color(0xFF0A0B0E),
+                      )
+                    : Color.alphaBlend(
+                        accent.withValues(alpha: 0.07),
+                        const Color(0xFFF7F7FA),
+                      ))
+              : parentTheme.scaffoldBackgroundColor);
 
     final seededScheme = ColorScheme.fromSeed(
       seedColor: accent,
@@ -476,8 +525,8 @@ class _AnimeDetailsScreenState extends State<AnimeDetailsScreen> {
     final anime = widget.anime;
     final fallback = anime.coverColor == null
         ? (anime.genres.isNotEmpty
-            ? genreColor(anime.genres.first)
-            : parentTheme.colorScheme.primary)
+              ? genreColor(anime.genres.first)
+              : parentTheme.colorScheme.primary)
         : Color(anime.coverColor!);
 
     return CoverPaletteBuilder(
@@ -530,19 +579,22 @@ class _AnimeDetailsScreenState extends State<AnimeDetailsScreen> {
               final cs = scopedTheme.colorScheme;
               final isWide = themedContext.hasSideNav;
               final inset = pageInset(themedContext);
-              final isDualPane =
-                  themedContext.layoutSize.atLeast(WindowSize.expanded);
+              final isDualPane = themedContext.layoutSize.atLeast(
+                WindowSize.expanded,
+              );
               final paneInset = isDualPane ? 24.0 : inset;
-              final leftPaneInset =
-                  isWide ? (kRailWidth + paneInset) : paneInset;
+              final leftPaneInset = isWide
+                  ? (kRailWidth + paneInset)
+                  : paneInset;
               final bottom = isDualPane
                   ? 24.0
                   : kNavBarHeight +
-                      kNavBarBottomMargin +
-                      MediaQuery.viewPaddingOf(themedContext).bottom +
-                      28.0;
+                        kNavBarBottomMargin +
+                        MediaQuery.viewPaddingOf(themedContext).bottom +
+                        28.0;
 
-              final romaji = anime.englishTitle != null &&
+              final romaji =
+                  anime.englishTitle != null &&
                       anime.englishTitle!.trim().toLowerCase() !=
                           anime.romajiTitle.trim().toLowerCase()
                   ? anime.romajiTitle
@@ -574,8 +626,7 @@ class _AnimeDetailsScreenState extends State<AnimeDetailsScreen> {
                       palette: palette,
                       inset: paneInset,
                       leftInset: leftPaneInset,
-                      heroTag:
-                          widget.heroTag ?? 'anime-poster-${anime.id}',
+                      heroTag: widget.heroTag ?? 'anime-poster-${anime.id}',
                       heroEnabled: _selectedTab == 0 || isDualPane,
                     ),
                   ),
@@ -674,11 +725,11 @@ class _AnimeDetailsScreenState extends State<AnimeDetailsScreen> {
                                 VerticalDivider(
                                   width: 1,
                                   thickness: 1,
-                                  color: cs.outlineVariant.withValues(alpha: 0.35),
+                                  color: cs.outlineVariant.withValues(
+                                    alpha: 0.35,
+                                  ),
                                 ),
-                                Expanded(
-                                  child: watchView,
-                                ),
+                                Expanded(child: watchView),
                               ],
                             );
                           },
@@ -738,84 +789,86 @@ class _AnimeDetailsScreenState extends State<AnimeDetailsScreen> {
                         child: RepaintBoundary(
                           child: Center(
                             child: ConstrainedBox(
-                            constraints: const BoxConstraints(maxWidth: 200),
-                            child: Style2PillNavBar(
-                              navBarConfig: NavBarConfig(
-                                selectedIndex: _selectedTab,
-                                items: [
-                                  ItemConfig(
-                                    icon: const Icon(Icons.info_rounded),
-                                    inactiveIcon: const Icon(
-                                      Icons.info_outline_rounded,
+                              constraints: const BoxConstraints(maxWidth: 200),
+                              child: Style2PillNavBar(
+                                navBarConfig: NavBarConfig(
+                                  selectedIndex: _selectedTab,
+                                  items: [
+                                    ItemConfig(
+                                      icon: const Icon(Icons.info_rounded),
+                                      inactiveIcon: const Icon(
+                                        Icons.info_outline_rounded,
+                                      ),
+                                      title: 'Info',
+                                      iconSize: 22,
+                                      activeForegroundColor: cs.onPrimary,
+                                      inactiveForegroundColor:
+                                          cs.onSurfaceVariant,
+                                      activeColorSecondary: cs.primary,
+                                      textStyle: const TextStyle(
+                                        fontWeight: FontWeight.w600,
+                                        fontSize: 12,
+                                      ),
                                     ),
-                                    title: 'Info',
-                                    iconSize: 22,
-                                    activeForegroundColor: cs.onPrimary,
-                                    inactiveForegroundColor:
-                                        cs.onSurfaceVariant,
-                                    activeColorSecondary: cs.primary,
-                                    textStyle: const TextStyle(
-                                      fontWeight: FontWeight.w600,
-                                      fontSize: 12,
+                                    ItemConfig(
+                                      icon: const Icon(
+                                        Icons.play_circle_rounded,
+                                      ),
+                                      inactiveIcon: const Icon(
+                                        Icons.play_circle_outline_rounded,
+                                      ),
+                                      title: 'Watch',
+                                      iconSize: 22,
+                                      activeForegroundColor: cs.onPrimary,
+                                      inactiveForegroundColor:
+                                          cs.onSurfaceVariant,
+                                      activeColorSecondary: cs.primary,
+                                      textStyle: const TextStyle(
+                                        fontWeight: FontWeight.w600,
+                                        fontSize: 12,
+                                      ),
                                     ),
-                                  ),
-                                  ItemConfig(
-                                    icon: const Icon(Icons.play_circle_rounded),
-                                    inactiveIcon: const Icon(
-                                      Icons.play_circle_outline_rounded,
-                                    ),
-                                    title: 'Watch',
-                                    iconSize: 22,
-                                    activeForegroundColor: cs.onPrimary,
-                                    inactiveForegroundColor:
-                                        cs.onSurfaceVariant,
-                                    activeColorSecondary: cs.primary,
-                                    textStyle: const TextStyle(
-                                      fontWeight: FontWeight.w600,
-                                      fontSize: 12,
-                                    ),
-                                  ),
-                                ],
-                                onItemSelected: (index) {
-                                  if (_selectedTab != index) {
-                                    HapticFeedback.selectionClick();
-                                    _watchProvider.handleTabVisibility(
-                                      index == 1,
-                                    );
-                                    if (index == 0) {
-                                      _watchProvider.cancelPlayback();
+                                  ],
+                                  onItemSelected: (index) {
+                                    if (_selectedTab != index) {
+                                      HapticFeedback.selectionClick();
+                                      _watchProvider.handleTabVisibility(
+                                        index == 1,
+                                      );
+                                      if (index == 0) {
+                                        _watchProvider.cancelPlayback();
+                                      }
+                                      if (index == 1) {
+                                        _initWatchTab(overrideAccent: accent);
+                                      }
+                                      setState(() => _selectedTab = index);
                                     }
-                                    if (index == 1) {
-                                      _initWatchTab(overrideAccent: accent);
-                                    }
-                                    setState(() => _selectedTab = index);
-                                  }
-                                },
-                              ),
-                              decoration: BoxDecoration(
-                                color: cs.surfaceContainerHighest,
-                                borderRadius: BorderRadius.circular(50),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: accent.withValues(
-                                      alpha: isDark ? 0.20 : 0.12,
+                                  },
+                                ),
+                                decoration: BoxDecoration(
+                                  color: cs.surfaceContainerHighest,
+                                  borderRadius: BorderRadius.circular(50),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: accent.withValues(
+                                        alpha: isDark ? 0.20 : 0.12,
+                                      ),
+                                      blurRadius: 18,
+                                      spreadRadius: 1,
+                                      offset: const Offset(0, 4),
                                     ),
-                                    blurRadius: 18,
-                                    spreadRadius: 1,
-                                    offset: const Offset(0, 4),
+                                  ],
+                                  border: Border.all(
+                                    color: cs.outlineVariant.withValues(
+                                      alpha: isDark ? 0.35 : 0.45,
+                                    ),
+                                    width: 0.9,
                                   ),
-                                ],
-                                border: Border.all(
-                                  color: cs.outlineVariant.withValues(
-                                    alpha: isDark ? 0.35 : 0.45,
-                                  ),
-                                  width: 0.9,
                                 ),
                               ),
                             ),
                           ),
                         ),
-                      ),
                       ),
                     ],
                   ),
@@ -882,10 +935,7 @@ class _TopBar extends StatelessWidget {
                       decoration: BoxDecoration(
                         color: cs.surface,
                         border: Border(
-                          bottom: BorderSide(
-                            color: borderColor,
-                            width: 0.8,
-                          ),
+                          bottom: BorderSide(color: borderColor, width: 0.8),
                         ),
                       ),
                     );
@@ -901,18 +951,12 @@ class _TopBar extends StatelessWidget {
 
                   return ClipRect(
                     child: BackdropFilter(
-                      filter: ImageFilter.blur(
-                        sigmaX: 8 * t,
-                        sigmaY: 8 * t,
-                      ),
+                      filter: ImageFilter.blur(sigmaX: 8 * t, sigmaY: 8 * t),
                       child: DecoratedBox(
                         decoration: BoxDecoration(
                           color: transitionBg,
                           border: Border(
-                            bottom: BorderSide(
-                              color: borderColor,
-                              width: 0.8,
-                            ),
+                            bottom: BorderSide(color: borderColor, width: 0.8),
                           ),
                         ),
                       ),
@@ -947,8 +991,11 @@ class _TopBar extends StatelessWidget {
                         final hasSubtitle =
                             subtitle != null && subtitle!.trim().isNotEmpty;
 
-                        final titleColor =
-                            Color.lerp(Colors.white, cs.onSurface, t)!;
+                        final titleColor = Color.lerp(
+                          Colors.white,
+                          cs.onSurface,
+                          t,
+                        )!;
                         final subtitleColor = Color.lerp(
                           Colors.white.withValues(alpha: 0.75),
                           cs.onSurfaceVariant,
@@ -1185,12 +1232,7 @@ class _Hero extends StatelessWidget {
       child: AnnotatedRegion<SystemUiOverlayStyle>(
         value: SystemUiOverlayStyle.light,
         child: Padding(
-          padding: EdgeInsets.fromLTRB(
-            leftInset ?? inset,
-            top + 68,
-            inset,
-            16,
-          ),
+          padding: EdgeInsets.fromLTRB(leftInset ?? inset, top + 68, inset, 16),
           child: _HeroCompact(
             anime: anime,
             media: media,
@@ -1236,11 +1278,7 @@ class _HeroCompact extends StatelessWidget {
         child: Stack(
           fit: StackFit.expand,
           children: [
-            AnimeImage(
-              anime.coverUrl,
-              tint: anime.coverColor,
-              cacheWidth: 450,
-            ),
+            AnimeImage(anime.coverUrl, tint: anime.coverColor, cacheWidth: 450),
             if (score != null)
               Positioned(
                 left: 8,
@@ -1406,7 +1444,6 @@ class _StatusButton extends StatelessWidget {
   }
 }
 
-
 // ═════════════════════════════════════════════════════════════════════════
 // Action buttons row (Watch now, Save, Trailer)
 // ═════════════════════════════════════════════════════════════════════════
@@ -1434,7 +1471,7 @@ class _WatchRow extends StatelessWidget {
   final ValueListenable<bool> subscribedNotifier;
   final ValueListenable<String?> watchStatusNotifier;
   final ValueListenable<({int episode, String provider, String audio})?>
-      savedWatchStateNotifier;
+  savedWatchStateNotifier;
   final WatchProvider watchProvider;
   final AnimeMedia anime;
   final NextAiring? nextAiring;
@@ -1457,18 +1494,39 @@ class _WatchRow extends StatelessWidget {
           watchStatusNotifier,
           savedWatchStateNotifier,
           watchProvider,
+          watchProvider.isPlayingNotifier,
         ]),
         builder: (context, _) {
           final cs = Theme.of(context).colorScheme;
           final saved = savedNotifier.value;
           final subscribed = subscribedNotifier.value;
           final watchStatus = watchStatusNotifier.value;
-          final epNum = watchProvider.currentEpisode?.number ??
-              savedWatchStateNotifier.value?.episode;
-          final watchLabel =
-              epNum != null ? 'Resume Episode $epNum' : 'Watch Now';
-          final canSubscribe = (subscribed ||
-              SubscriptionRepository.instance.canSubscribe(anime, nextAiring)) &&
+
+          final isPlaying =
+              watchProvider.isPlayingNotifier.value ||
+              watchProvider.state == WatchState.playing ||
+              watchProvider.state == WatchState.loadingStream;
+          final currentEp = watchProvider.currentEpisode;
+          final currentPercent = currentEp != null
+              ? (watchProvider.watchedPercentages[currentEp.number] ?? 0.0)
+              : 0.0;
+          final isPartiallyWatched =
+              currentPercent > 0.01 && currentPercent < 0.90;
+
+          final savedEpNum = savedWatchStateNotifier.value?.episode;
+          final int? resumeEpNum = isPlaying
+              ? (currentEp?.number ?? savedEpNum)
+              : (savedEpNum ?? (isPartiallyWatched ? currentEp?.number : null));
+
+          final watchLabel = resumeEpNum != null
+              ? 'Resume Episode $resumeEpNum'
+              : 'Watch Now';
+          final canSubscribe =
+              (subscribed ||
+                  SubscriptionRepository.instance.canSubscribe(
+                    anime,
+                    nextAiring,
+                  )) &&
               onSubscribe != null;
 
           if (!showPlayButton) {
@@ -1495,7 +1553,9 @@ class _WatchRow extends StatelessWidget {
                     ),
                   ),
                   icon: Icon(
-                    saved ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+                    saved
+                        ? Icons.favorite_rounded
+                        : Icons.favorite_border_rounded,
                     color: saved ? Colors.redAccent : cs.onSurface,
                   ),
                 ),
@@ -1606,10 +1666,7 @@ class _WatchRow extends StatelessWidget {
           if (isSingleRow) {
             return Row(
               children: [
-                Expanded(
-                  flex: 3,
-                  child: primaryAction,
-                ),
+                Expanded(flex: 3, child: primaryAction),
                 const SizedBox(width: 12),
                 Expanded(
                   flex: 2,
@@ -1633,7 +1690,9 @@ class _WatchRow extends StatelessWidget {
                     ),
                   ),
                   icon: Icon(
-                    saved ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+                    saved
+                        ? Icons.favorite_rounded
+                        : Icons.favorite_border_rounded,
                     color: saved ? Colors.redAccent : cs.onSurface,
                   ),
                 ),
@@ -1697,7 +1756,9 @@ class _WatchRow extends StatelessWidget {
                   const SizedBox(width: 10),
                   IconButton.filledTonal(
                     onPressed: onSave,
-                    tooltip: saved ? 'Remove from favorites' : 'Add to favorites',
+                    tooltip: saved
+                        ? 'Remove from favorites'
+                        : 'Add to favorites',
                     style: IconButton.styleFrom(
                       fixedSize: const Size(48, 48),
                       backgroundColor: cs.surfaceContainerHighest.withValues(
@@ -1708,7 +1769,9 @@ class _WatchRow extends StatelessWidget {
                       ),
                     ),
                     icon: Icon(
-                      saved ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+                      saved
+                          ? Icons.favorite_rounded
+                          : Icons.favorite_border_rounded,
                       color: saved ? Colors.redAccent : cs.onSurface,
                     ),
                   ),
@@ -1802,7 +1865,7 @@ class _InfoBody extends StatelessWidget {
   final ValueListenable<bool> subscribedNotifier;
   final ValueListenable<String?> watchStatusNotifier;
   final ValueListenable<({int episode, String provider, String audio})?>
-      savedWatchStateNotifier;
+  savedWatchStateNotifier;
   final WatchProvider watchProvider;
   final VoidCallback onRetry;
   final VoidCallback onWatch;
@@ -1839,7 +1902,10 @@ class _InfoBody extends StatelessWidget {
         children: [
           // ── Unified quick stats strip ──
           _p(
-            DetailsStatsRow(popularity: media.popularity, favourites: d?.favourites),
+            DetailsStatsRow(
+              popularity: media.popularity,
+              favourites: d?.favourites,
+            ),
           ),
 
           // ── Next episode countdown card ──
@@ -1910,9 +1976,7 @@ class _InfoBody extends StatelessWidget {
                       inset: inset,
                       leftInset: leftInset,
                       itemCount: genres.length,
-                      itemBuilder: (_, i) => DetailsGenreCard(
-                        genre: genres[i],
-                      ),
+                      itemBuilder: (_, i) => DetailsGenreCard(genre: genres[i]),
                     ),
             ),
 

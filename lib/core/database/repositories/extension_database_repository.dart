@@ -51,7 +51,12 @@ class ExtensionDatabaseRepository {
       author: Value(manifest.author),
       iconUrl: Value(manifest.iconUrl),
       description: Value(manifest.description),
-      audio: Value(jsonEncode(manifest.audio.map((a) => a.name).toList())),
+      audio: Value(
+        jsonEncode({
+          'tracks': manifest.audio.map((a) => a.name).toList(),
+          'isAdult': manifest.isAdult,
+        }),
+      ),
       lang: Value(manifest.lang),
       baseUrl: Value(manifest.baseUrl),
       isEnabled: Value(manifest.isEnabled),
@@ -164,6 +169,7 @@ class ExtensionDatabaseRepository {
 
   static ExtensionManifest _rowToManifest(InstalledExtension row) {
     final audioList = <StreamAudio>[];
+    var isAdult = false;
     try {
       final decoded = jsonDecode(row.audio);
       if (decoded is List) {
@@ -173,6 +179,18 @@ class ExtensionDatabaseRepository {
                 ? StreamAudio.dub
                 : StreamAudio.sub,
           );
+        }
+      } else if (decoded is Map) {
+        isAdult = (decoded['isAdult'] as bool?) ?? false;
+        final rawTracks = decoded['tracks'];
+        if (rawTracks is List) {
+          for (final item in rawTracks) {
+            audioList.add(
+              item.toString().toLowerCase() == 'dub'
+                  ? StreamAudio.dub
+                  : StreamAudio.sub,
+            );
+          }
         }
       }
     } catch (_) {
@@ -198,6 +216,7 @@ class ExtensionDatabaseRepository {
       repoUrl: row.repoUrl,
       installedAt: row.installedAt,
       updatedAt: row.updatedAt,
+      isAdult: isAdult,
     );
   }
 }

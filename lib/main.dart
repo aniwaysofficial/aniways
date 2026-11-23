@@ -1,9 +1,11 @@
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:aniways/core/logger.dart';
 import 'package:aniways/core/scroll/app_scroll.dart';
 import 'package:provider/provider.dart';
 import 'package:dynamic_color/dynamic_color.dart';
+import 'package:sentry_flutter/sentry_flutter.dart';
 
 import 'package:aniways/core/constants.dart';
 import 'package:aniways/core/extensions/manager/extension_manager.dart';
@@ -83,61 +85,107 @@ void _setupNotificationNavigation() {
   };
 }
 
-void main() async {
-  WidgetsFlutterBinding.ensureInitialized();
+const String _kSentryDsn =
+    'https://74ed062158fd2bd2b0880f47b5eaca81@o4512481811365888.ingest.de.sentry.io/4512481817788496';
 
-  await AppInfoService.instance.init();
-
-  FlutterError.onError = (details) {
-    FlutterError.presentError(details);
-    log.e(
-      'Unhandled Flutter error',
-      error: details.exception,
-      stackTrace: details.stack,
-    );
-  };
-  PlatformDispatcher.instance.onError = (error, stack) {
-    log.e('Unhandled async error', error: error, stackTrace: stack);
-    return true;
-  };
-
-  await SharedPreferencesService().init();
-
-  _setupNotificationNavigation();
-
-  // Initialize notification engine and background worker
-  try {
-    await NotificationService.instance.init();
-    await BackgroundNotificationWorker.initialize();
-  } catch (_) {}
-
-  // Initialize extensions so provider cache & states are ready before UI builds
-  try {
-    await extensionManager.initialize();
-  } catch (_) {}
-
-  // Background startup tasks (cache size enforcement, auto-backup, episode check)
-  Future.microtask(() async {
+void _startDeferredServices() {
+  // Defer non-critical services until after the UI has mounted and rendered its first frame.
+  // This eliminates the 2-4 second splash freeze while ensuring background workers,
+  // extension engines, and notifications are fully operational.
+  unawaited(() async {
+    // 1. Notification system and background WorkManager registration
     try {
+      await NotificationService.instance.init();
+      await BackgroundNotificationWorker.initialize();
+    } catch (e) {
+      log.w('Failed to initialize notification or background worker: $e');
+    }
+
+    // 2. Extension manager (compiled QuickJS runtimes)
+    try {
+      await extensionManager.initialize();
+    } catch (e) {
+      log.w('Failed to initialize extension manager: $e');
+    }
+
+    // 3. Low-priority maintenance tasks (delayed slightly so startup interactions stay smooth)
+    try {
+      await Future.delayed(const Duration(seconds: 3));
       await ImageCacheService.instance.enforceCacheLimit();
       await BackupRestoreService.instance.checkAndRunAutoBackup();
       if (SharedPreferencesService().notificationEnabled) {
         await checkAndNotifyEpisodes();
         await BackgroundNotificationWorker.rescheduleAllSubscriptions();
       }
-    } catch (_) {}
-  });
+    } catch (e) {
+      log.w('Startup maintenance tasks encountered an error: $e');
+    }
+  }());
+}
 
-  runApp(
-    MultiProvider(
-      providers: [
-        ChangeNotifierProvider(create: (_) => ThemeProvider()),
-        // TODO: add more providers here as the app grows
-        // ChangeNotifierProvider(create: (_) => AuthProvider()),
-        // ChangeNotifierProvider(create: (_) => WatchlistProvider()),
-      ],
-      child: const AniwaysApp(),
-    ),
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // Await only essential services required for theme and root routing
+  await Future.wait([
+    AppInfoService.instance.init(),
+    SharedPreferencesService().init(),
+  ]);
+
+  _setupNotificationNavigation();
+
+  final app = MultiProvider(
+    providers: [ChangeNotifierProvider(create: (_) => ThemeProvider())],
+    child: const AniwaysApp(),
+  );
+
+  // If user disabled crash reporting in settings, launch app directly without Sentry initialization
+  if (!SharedPreferencesService().isCrashReportingEnabled) {
+    FlutterError.onError = (details) {
+      FlutterError.presentError(details);
+      log.e(
+        'Unhandled Flutter error',
+        error: details.exception,
+        stackTrace: details.stack,
+      );
+    };
+    PlatformDispatcher.instance.onError = (error, stack) {
+      log.e('Unhandled async error', error: error, stackTrace: stack);
+      return true;
+    };
+
+    runApp(app);
+    _startDeferredServices();
+    return;
+  }
+
+  await SentryFlutter.init(
+    (options) {
+      options.dsn = _kSentryDsn;
+      // Traces sample rate for performance profiling (20% to stay comfortably within free tier)
+      options.tracesSampleRate = 0.2;
+      // Active user sessions tracking (DAU/MAU)
+      options.enableAutoSessionTracking = true;
+      options.autoSessionTrackingInterval = const Duration(minutes: 30);
+      options.sendDefaultPii = false;
+
+      // Filter or drop events if crash reporting is toggled off
+      options.beforeSend = (event, hint) {
+        if (!SharedPreferencesService().isCrashReportingEnabled) {
+          return null;
+        }
+        return event;
+      };
+    },
+    appRunner: () {
+      runApp(
+        DefaultAssetBundle(
+          bundle: SentryAssetBundle(),
+          child: app,
+        ),
+      );
+      _startDeferredServices();
+    },
   );
 }
 

@@ -6,6 +6,7 @@ import 'package:aniways/core/database/app_database.dart';
 import 'package:aniways/core/extensions/manager/extension_manager.dart';
 import 'package:aniways/core/extensions/manager/repo_sync_service.dart';
 import 'package:aniways/core/extensions/models/extension_manifest.dart';
+import 'package:aniways/core/storage/shared_preferences_service.dart';
 import 'package:aniways/core/widgets/anime_states.dart';
 import 'package:aniways/core/widgets/extension_icon.dart';
 import 'package:aniways/core/widgets/aniways_snackbar.dart';
@@ -190,7 +191,11 @@ class BrowseExtensionsTabState extends State<BrowseExtensionsTab>
 
   /// Filtered by repo + search, then sorted: updates → not installed → installed.
   List<CatalogExtensionItem> get _filteredItems {
+    final adultEnabled = SharedPreferencesService().enableAdultContent;
     final list = _items.where((item) {
+      if (item.manifest.isAdult && !adultEnabled) {
+        return false;
+      }
       if (_selectedRepoId != null && item.repoId != _selectedRepoId) {
         return false;
       }
@@ -510,6 +515,8 @@ class BrowseExtensionsTabState extends State<BrowseExtensionsTab>
                     ),
                     if (isVerifiedExtension(m))
                       const VerifiedBadge(),
+                    if (m.isAdult)
+                      const AdultBadge(),
                   ],
                 ),
                 const SizedBox(height: 2),
